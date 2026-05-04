@@ -133,9 +133,9 @@ static char *trim(char *s) {
  * @brief Locate the primary operator in an infix expression string.
  *
  * Precedence rules (lowest wins): @c + / @c - are searched first
- * (right-to-left), then @c * / @c / / @c % if no additive operator
- * is found. A leading sign character at position 0 is never treated
- * as an operator.
+ * (right-to-left), then @c * / @c / / @c % , then @c ^ if no
+ * lower-precedence operator is found. A leading sign character at
+ * position 0 is never treated as an operator.
  * @param s      Null-terminated expression string.
  * @param op     Receives the operator character on success.
  * @param op_pos Receives the byte offset of the operator on success.
@@ -167,6 +167,16 @@ static int find_operator(const char *s, char *op, int *op_pos) {
         }
     }
 
+    if (found == 0) {
+        for (int i = (int)strlen(s) - 1; i >= 0; i--) {
+            if (s[i] == '^') {
+                pos = i;
+                found = s[i];
+                break;
+            }
+        }
+    }
+
     if (found == 0)
         return -1;
     *op = found;
@@ -187,6 +197,14 @@ static void handle_expression(const char *line) {
     char buf[LINE_MAX_LEN];
     strncpy(buf, line, LINE_MAX_LEN - 1);
     buf[LINE_MAX_LEN - 1] = 0;
+
+    /* Normalize ** to ^ */
+    for (int i = 0; buf[i] && buf[i + 1]; i++) {
+        if (buf[i] == '*' && buf[i + 1] == '*') {
+            buf[i] = '^';
+            memmove(buf + i + 1, buf + i + 2, strlen(buf + i + 2) + 1);
+        }
+    }
 
     char op = 0;
     int op_pos = -1;
@@ -253,6 +271,24 @@ static void handle_expression(const char *line) {
             break;
         }
         result = lhs % rhs;
+        break;
+    case '^':
+        if (rhs < 0) {
+            fprintf(stderr, "error: negative exponent\n");
+            return;
+        }
+        result = 1;
+        {
+            int64_t base = lhs;
+            int64_t exp = rhs;
+            while (exp > 0) {
+                if (exp & 1)
+                    result *= base;
+                exp >>= 1;
+                if (exp > 0)
+                    base *= base;
+            }
+        }
         break;
     default:
         fprintf(stderr, "error: unknown operator\n");

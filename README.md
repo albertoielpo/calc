@@ -37,11 +37,15 @@ Enter an expression with two operands and one operator:
 33
 > 100%3
 1
+> 10^2
+100
+> 10**2
+100
 ```
 
-Supported operators: `+` `-` `*` `/` `%`
+Supported operators: `+` `-` `*` `/` `%` `^` (also `**`)
 
-Integer division truncates toward zero. Modulo follows the sign of the dividend.
+Integer division truncates toward zero. Modulo follows the sign of the dividend. Exponentiation requires a non-negative integer exponent.
 
 ### Base conversion
 
@@ -94,6 +98,7 @@ A bare number with no operator performs a plain base conversion:
 | Modulo by zero | `error: modulo by zero` |
 | Arithmetic overflow | `error: overflow` |
 | Invalid digit for current base | `error: invalid left/right operand: …` |
+| Negative exponent | `error: negative exponent` |
 | Unsupported base | `error: ibase must be 2, 8, 10 or 16` |
 | Unrecognized input | `error: unrecognized input: …` |
 
