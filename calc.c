@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,8 +18,10 @@
 
 #define LINE_MAX_LEN 256
 
-static int ibase = 10; /**< Current input base (2, 8, 10, or 16). */
-static int obase = 10; /**< Current output base (2, 8, 10, or 16). */
+static int ibase = 10;       /**< Current input base (2, 8, 10, or 16). */
+static int obase = 10;       /**< Current output base (2, 8, 10, or 16). */
+static int ibase_float = 0;  /**< Non-zero when ibase is "10f" (floating-point input). */
+static int obase_float = 0;  /**< Non-zero when obase is "10f" (floating-point output). */
 
 /**
  * @brief Check whether @p b is an accepted number base.
@@ -27,6 +30,12 @@ static int obase = 10; /**< Current output base (2, 8, 10, or 16). */
  */
 static int valid_base(int b) {
     return b == 2 || b == 8 || b == 10 || b == 16;
+}
+
+/* Returns non-zero if s is "10f" or "10F". */
+static int is_float_base(const char *s) {
+    return s[0] == '1' && s[1] == '0' &&
+           (s[2] == 'f' || s[2] == 'F') && s[3] == '\0';
 }
 
 /**
@@ -113,6 +122,18 @@ static int parse_number(const char *s, int64_t *out) {
     return 0;
 }
 
+/* Parse a decimal floating-point token into *out. Returns 0 on success, -1 on error. */
+static int parse_float(const char *s, double *out) {
+    if (*s == 0)
+        return -1;
+    char *end;
+    errno = 0;
+    *out = strtod(s, &end);
+    if (errno != 0 || *end != 0)
+        return -1;
+    return 0;
+}
+
 /**
  * @brief Trim leading and trailing whitespace from @p s in-place.
  * @param s Mutable, null-terminated string to trim.
@@ -151,6 +172,9 @@ static int find_operator(const char *s, char *op, int *op_pos) {
         if (i == 0 && (s[i] == '+' || s[i] == '-'))
             break;
         if (s[i] == '+' || s[i] == '-') {
+            /* in float mode skip the sign character inside exponents (e.g. 1.5e+2) */
+            if (ibase_float && i > 0 && (s[i - 1] == 'e' || s[i - 1] == 'E'))
+                continue;
             pos = i;
             found = s[i];
             break;
@@ -210,12 +234,27 @@ static void handle_expression(const char *line) {
     int op_pos = -1;
 
     if (find_operator(buf, &op, &op_pos) != 0) {
-        /* No operator — treat as a bare number (base conversion) */
-        int64_t val;
-        if (parse_number(trim(buf), &val) == 0) {
-            print_result(val);
+        /* No operator — bare number (base conversion / echo) */
+        if (ibase_float) {
+            double val;
+            if (parse_float(trim(buf), &val) == 0) {
+                if (obase_float)
+                    printf("%g\n", val);
+                else
+                    print_result((int64_t)val);
+            } else {
+                fprintf(stderr, "error: unrecognized input: %s\n", line);
+            }
         } else {
-            fprintf(stderr, "error: unrecognized input: %s\n", line);
+            int64_t val;
+            if (parse_number(trim(buf), &val) == 0) {
+                if (obase_float)
+                    printf("%g\n", (double)val);
+                else
+                    print_result(val);
+            } else {
+                fprintf(stderr, "error: unrecognized input: %s\n", line);
+            }
         }
         return;
     }
@@ -229,6 +268,44 @@ static void handle_expression(const char *line) {
     char *lhs_t = trim(lhs_s);
     char *rhs_t = trim(rhs_s);
 
+    if (ibase_float) {
+        /* --- floating-point path --- */
+        double lhs, rhs, result;
+        if (parse_float(lhs_t, &lhs) != 0) {
+            fprintf(stderr, "error: invalid left operand: %s\n", lhs_t);
+            return;
+        }
+        if (parse_float(rhs_t, &rhs) != 0) {
+            fprintf(stderr, "error: invalid right operand: %s\n", rhs_t);
+            return;
+        }
+        switch (op) {
+        case '+': result = lhs + rhs; break;
+        case '-': result = lhs - rhs; break;
+        case '*': result = lhs * rhs; break;
+        case '/':
+            if (rhs == 0.0) { fprintf(stderr, "error: division by zero\n"); return; }
+            result = lhs / rhs;
+            break;
+        case '%':
+            if (rhs == 0.0) { fprintf(stderr, "error: modulo by zero\n"); return; }
+            result = fmod(lhs, rhs);
+            break;
+        case '^':
+            result = pow(lhs, rhs);
+            break;
+        default:
+            fprintf(stderr, "error: unknown operator\n");
+            return;
+        }
+        if (obase_float)
+            printf("%g\n", result);
+        else
+            print_result((int64_t)result);
+        return;
+    }
+
+    /* --- integer path --- */
     int64_t lhs, rhs;
     if (parse_number(lhs_t, &lhs) != 0) {
         fprintf(stderr, "error: invalid left operand: %s\n", lhs_t);
@@ -294,7 +371,10 @@ static void handle_expression(const char *line) {
         fprintf(stderr, "error: unknown operator\n");
         return;
     }
-    print_result(result);
+    if (obase_float)
+        printf("%g\n", (double)result);
+    else
+        print_result(result);
 }
 
 /**
@@ -327,22 +407,36 @@ int main(void) {
 
         /* ibase <n> */
         if (strncmp(s, "ibase", 5) == 0 && (s[5] == ' ' || s[5] == '\t')) {
-            int b = atoi(trim(s + 5));
-            if (!valid_base(b)) {
-                fprintf(stderr, "error: ibase must be 2, 8, 10 or 16\n");
+            char *arg = trim(s + 5);
+            if (is_float_base(arg)) {
+                ibase = 10;
+                ibase_float = 1;
             } else {
-                ibase = b;
+                int b = atoi(arg);
+                if (!valid_base(b)) {
+                    fprintf(stderr, "error: ibase must be 2, 8, 10, 10f or 16\n");
+                } else {
+                    ibase = b;
+                    ibase_float = 0;
+                }
             }
             continue;
         }
 
         /* obase <n> */
         if (strncmp(s, "obase", 5) == 0 && (s[5] == ' ' || s[5] == '\t')) {
-            int b = atoi(trim(s + 5));
-            if (!valid_base(b)) {
-                fprintf(stderr, "error: obase must be 2, 8, 10 or 16\n");
+            char *arg = trim(s + 5);
+            if (is_float_base(arg)) {
+                obase = 10;
+                obase_float = 1;
             } else {
-                obase = b;
+                int b = atoi(arg);
+                if (!valid_base(b)) {
+                    fprintf(stderr, "error: obase must be 2, 8, 10, 10f or 16\n");
+                } else {
+                    obase = b;
+                    obase_float = 0;
+                }
             }
             continue;
         }

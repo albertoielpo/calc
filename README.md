@@ -49,7 +49,29 @@ Integer division truncates toward zero. Modulo follows the sign of the dividend.
 
 ### Base conversion
 
-`ibase` sets the input base, `obase` sets the output base. Both default to 10. Supported values: `2`, `8`, `10`, `16`.
+`ibase` sets the input base, `obase` sets the output base. Both default to 10. Supported values: `2`, `8`, `10`, `10f`, `16`.
+
+#### Floating-point mode (`10f`)
+
+Use `10f` (case-insensitive) as the base to switch a channel to IEEE-754 double precision.
+
+- `ibase 10f` — parse inputs as floating-point numbers; arithmetic uses `double`.
+- `obase 10f` — format the result as a floating-point number.
+
+```
+> ibase 10f
+> obase 10f
+> 1.5+2.5
+4
+> 10.0/3.0
+3.33333
+> 2.0^0.5
+1.41421
+> 3.5%1.5
+0.5
+```
+
+Exponentiation with a `double` exponent (`2.0^0.5` = √2) and `fmod` for `%` are supported. Division and modulo by zero are still reported as errors.
 
 Hexadecimal digits must be uppercase (`A`–`F`).
 
@@ -99,7 +121,7 @@ A bare number with no operator performs a plain base conversion:
 | Arithmetic overflow | `error: overflow` |
 | Invalid digit for current base | `error: invalid left/right operand: …` |
 | Negative exponent | `error: negative exponent` |
-| Unsupported base | `error: ibase must be 2, 8, 10 or 16` |
+| Unsupported base | `error: ibase must be 2, 8, 10, 10f or 16` |
 | Unrecognized input | `error: unrecognized input: …` |
 
 ## Limits

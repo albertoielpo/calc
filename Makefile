@@ -18,7 +18,7 @@ SRCS    = calc.c
 all: $(TARGET)
 
 $(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o bin/$@ $^ -lm
 
 run: $(TARGET)
 	./$(TARGET)
