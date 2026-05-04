@@ -2,6 +2,10 @@
 
 A simple interactive calculator for the terminal, inspired by `bc` but intentionally minimal. Supports the five basic arithmetic operations and configurable input/output bases (2, 8, 10, 16).
 
+## Binary
+
+A pre-built statically compiled binary is available in the `bin/` folder.
+
 ## Build
 
 ```sh
