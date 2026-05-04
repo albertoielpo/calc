@@ -1,0 +1,12 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true,
+    "files.eol": "\n",
+    "files.associations": {
+        "limits.h": "c",
+        "stdint.h": "c",
+        "stdio.h": "c",
+        "string.h": "c"
+    }
+}
