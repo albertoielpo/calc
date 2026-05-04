@@ -1,6 +1,6 @@
-# calc
+# Calc
 
-A simple interactive calculator for the terminal, inspired by `bc` but intentionally minimal. Supports the five basic arithmetic operations and configurable input/output bases (2, 8, 10, 16).
+A simple interactive calculator for the terminal, inspired by `bc` but intentionally minimal. Supports basic arithmetic operations and configurable input/output bases (2, 8, 10, 16).
 
 ## Binary
 
