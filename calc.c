@@ -17,11 +17,12 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
+#define CALC_VERSION "1.1.0"
 
-static int ibase = 10;       /**< Current input base (2, 8, 10, or 16). */
-static int obase = 10;       /**< Current output base (2, 8, 10, or 16). */
-static int ibase_float = 0;  /**< Non-zero when ibase is "10f" (floating-point input). */
-static int obase_float = 0;  /**< Non-zero when obase is "10f" (floating-point output). */
+static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
+static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
+static int ibase_float = 0; /**< Non-zero when ibase is "10f" (floating-point input). */
+static int obase_float = 0; /**< Non-zero when obase is "10f" (floating-point output). */
 
 /**
  * @brief Check whether @p b is an accepted number base.
@@ -52,7 +53,10 @@ static void print_result(int64_t val) {
     }
 
     if (val == 0) {
-        printf("0\n");
+        if (obase == 2)
+            printf("00000000\n");
+        else
+            printf("0\n");
         return;
     }
 
@@ -73,6 +77,14 @@ static void print_result(int64_t val) {
         int digit = (int)(uval % (uint64_t)obase);
         buf[i++] = (digit < 10) ? ('0' + digit) : ('A' + digit - 10);
         uval /= (uint64_t)obase;
+    }
+
+    if (obase == 2) {
+        int target = (i <= 8) ? 8 : (i <= 16) ? 16
+                                : (i <= 32)   ? 32
+                                              : 64;
+        while (i < target)
+            buf[i++] = '0';
     }
 
     if (neg)
@@ -280,15 +292,27 @@ static void handle_expression(const char *line) {
             return;
         }
         switch (op) {
-        case '+': result = lhs + rhs; break;
-        case '-': result = lhs - rhs; break;
-        case '*': result = lhs * rhs; break;
+        case '+':
+            result = lhs + rhs;
+            break;
+        case '-':
+            result = lhs - rhs;
+            break;
+        case '*':
+            result = lhs * rhs;
+            break;
         case '/':
-            if (rhs == 0.0) { fprintf(stderr, "error: division by zero\n"); return; }
+            if (rhs == 0.0) {
+                fprintf(stderr, "error: division by zero\n");
+                return;
+            }
             result = lhs / rhs;
             break;
         case '%':
-            if (rhs == 0.0) { fprintf(stderr, "error: modulo by zero\n"); return; }
+            if (rhs == 0.0) {
+                fprintf(stderr, "error: modulo by zero\n");
+                return;
+            }
             result = fmod(lhs, rhs);
             break;
         case '^':
@@ -389,7 +413,7 @@ static void handle_expression(const char *line) {
  */
 int main(void) {
     char line[LINE_MAX_LEN];
-    printf("calc — type 'exit' or 'quit' to leave\n");
+    printf("calc %s — type 'exit' or 'quit' to leave\n", CALC_VERSION);
 
     while (1) {
         printf("> ");

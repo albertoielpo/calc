@@ -21,7 +21,7 @@ $(TARGET): $(SRCS)
 	$(CC) $(CFLAGS) -o bin/$@ $^ -lm
 
 run: $(TARGET)
-	./$(TARGET)
+	./bin/$(TARGET)
 
 clean:
 	rm -f $(TARGET) *.o

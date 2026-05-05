@@ -89,11 +89,17 @@ A
 10
 ```
 
+Binary output is left-padded with zeros to the nearest byte boundary (8, 16, 32, or 64 bits):
+
 ```
 > ibase 10
 > obase 2
+> 8
+00001000
 > 255
 11111111
+> 256
+0000000100000000
 ```
 
 ```

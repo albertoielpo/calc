@@ -93,7 +93,7 @@ test_base16_carry() {
 
 test_base2_output() {
     local res=$(execute_test "ibase 10" "obase 2" "5+3")
-    assert_test $res "1000"
+    assert_test $res "00001000"
 }
 
 test_base2_input() {
@@ -123,7 +123,7 @@ test_base_conversion_hex_to_dec() {
 
 test_base_conversion_dec_to_bin() {
     local res=$(execute_test "ibase 10" "obase 2" "10")
-    assert_test $res "1010"
+    assert_test $res "00001010"
 }
 
 test_float_addition() {
