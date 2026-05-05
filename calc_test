@@ -213,6 +213,56 @@ test_res_float() {
     assert_test "$res" "6"
 }
 
+test_multi_addition() {
+    local res=$(execute_test "10+10+10")
+    assert_test $res "30"
+}
+
+test_multi_mixed_precedence() {
+    local res=$(execute_test "2+3*4")
+    assert_test $res "14"
+}
+
+test_multi_parens_override_precedence() {
+    local res=$(execute_test "(2+3)*4")
+    assert_test $res "20"
+}
+
+test_multi_nested_parens() {
+    local res=$(execute_test "((2+3)*2+1)*3")
+    assert_test $res "33"
+}
+
+test_multi_power_right_assoc() {
+    local res=$(execute_test "2^3^2")
+    assert_test $res "512"
+}
+
+test_multi_complex_expr() {
+    local res=$(execute_test "10/2+3*4-1")
+    assert_test $res "16"
+}
+
+test_multi_unary_minus_in_expr() {
+    local res=$(execute_test "-2*3+10")
+    assert_test $res "4"
+}
+
+test_multi_float_precedence() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "1.5+2.5*2")
+    assert_test $res "6.5"
+}
+
+test_multi_float_parens() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "(1.5+2.5)*2")
+    assert_test $res "8"
+}
+
+test_multi_res_in_expr() {
+    local res=$(execute_test_last "3" "res*2+1")
+    assert_test $res "7"
+}
+
 # ----------------- TEST EXECUTIONS -----------------
 test_base10_sum
 test_base10_subtraction
@@ -249,3 +299,13 @@ test_res_rhs
 test_res_negative
 test_res_alone
 test_res_float
+test_multi_addition
+test_multi_mixed_precedence
+test_multi_parens_override_precedence
+test_multi_nested_parens
+test_multi_power_right_assoc
+test_multi_complex_expr
+test_multi_unary_minus_in_expr
+test_multi_float_precedence
+test_multi_float_parens
+test_multi_res_in_expr

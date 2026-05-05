@@ -2,10 +2,11 @@
  * @file calc.c
  * @brief Interactive calculator with configurable input/output bases.
  *
- * Supports +, -, *, /, %, ^ operations on 64-bit signed integers or IEEE-754
- * doubles (when ibase/obase are set to @c 10f). Input and output bases can be
- * set to 2, 8, 10, or 16 via the @c ibase and @c obase commands. The special
- * token @c res always holds the last computed result.
+ * Supports +, -, *, /, %, ^ operations with full operator precedence and
+ * parentheses on 64-bit signed integers or IEEE-754 doubles (when ibase/obase
+ * are set to @c 10f). Input and output bases can be set to 2, 8, 10, or 16
+ * via the @c ibase and @c obase commands. The special token @c res always
+ * holds the last computed result.
  */
 
 #include <ctype.h>
@@ -18,7 +19,7 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.3.0"
+#define CALC_VERSION "1.4.0"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
@@ -124,71 +125,6 @@ static void print_result(int64_t val) {
 }
 
 /**
- * @brief Parse a number token using the current input base (@c ibase).
- *
- * Accepts an optional leading @c - sign. Rejects digits out of range for
- * @c ibase. The special token @c res (or @c -res) resolves to the last
- * computed integer result without involving @c ibase digit validation.
- * @param s   Null-terminated token to parse.
- * @param out Receives the parsed value on success.
- * @return    0 on success, -1 on parse error or invalid digit.
- */
-static int parse_number(const char *s, int64_t *out) {
-    if (*s == 0)
-        return -1;
-    if (strcmp(s, "res") == 0) {
-        *out = last_result;
-        return 0;
-    }
-    if (*s == '-' && strcmp(s + 1, "res") == 0) {
-        *out = -last_result;
-        return 0;
-    }
-    char *end;
-    errno = 0;
-    *out = (int64_t)strtoll(s, &end, ibase);
-    if (errno != 0 || *end != 0)
-        return -1;
-    /* validate digits are legal for the base */
-    for (const char *p = s + (*s == '-' ? 1 : 0); *p; p++) {
-        int d;
-        if (*p >= '0' && *p <= '9')
-            d = *p - '0';
-        else if (*p >= 'a' && *p <= 'f')
-            d = *p - 'a' + 10;
-        else if (*p >= 'A' && *p <= 'F')
-            d = *p - 'A' + 10;
-        else
-            return -1;
-        if (d >= ibase)
-            return -1;
-    }
-    return 0;
-}
-
-/* Parse a decimal floating-point token into *out.
- * The special token "res" (or "-res") resolves to last_result_d.
- * Returns 0 on success, -1 on error. */
-static int parse_float(const char *s, double *out) {
-    if (*s == 0)
-        return -1;
-    if (strcmp(s, "res") == 0) {
-        *out = last_result_d;
-        return 0;
-    }
-    if (*s == '-' && strcmp(s + 1, "res") == 0) {
-        *out = -last_result_d;
-        return 0;
-    }
-    char *end;
-    errno = 0;
-    *out = strtod(s, &end);
-    if (errno != 0 || *end != 0)
-        return -1;
-    return 0;
-}
-
-/**
  * @brief Trim leading and trailing whitespace from @p s in-place.
  * @param s Mutable, null-terminated string to trim.
  * @return  Pointer to the first non-whitespace character within @p s.
@@ -204,252 +140,328 @@ static char *trim(char *s) {
     return s;
 }
 
-/**
- * @brief Locate the primary operator in an infix expression string.
+/* ─── expression parser ──────────────────────────────────────────────────────
  *
- * Precedence rules (lowest wins): @c + / @c - are searched first
- * (right-to-left), then @c * / @c / / @c % , then @c ^ if no
- * lower-precedence operator is found. A leading sign character at
- * position 0 is never treated as an operator.
- * @param s      Null-terminated expression string.
- * @param op     Receives the operator character on success.
- * @param op_pos Receives the byte offset of the operator on success.
- * @return       0 on success, -1 if no operator is found.
+ * Grammar (integer and floating-point modes share the same structure):
+ *   expr    = term   { ('+' | '-') term   }
+ *   term    = power  { ('*' | '/' | '%') power }
+ *   power   = unary  [ '^' power ]          (right-associative)
+ *   unary   = '-' unary | '+' unary | primary
+ *   primary = NUMBER | 'res' | '(' expr ')'
+ *
+ * '**' is accepted as a synonym for '^'.
  */
-static int find_operator(const char *s, char *op, int *op_pos) {
-    /* Scan right-to-left for + or -, then for * / % if not found */
-    int pos = -1;
-    char found = 0;
 
-    for (int i = (int)strlen(s) - 1; i >= 0; i--) {
-        /* skip sign at position 0 */
-        if (i == 0 && (s[i] == '+' || s[i] == '-'))
-            break;
-        if (s[i] == '+' || s[i] == '-') {
-            /* in float mode skip the sign character inside exponents (e.g. 1.5e+2) */
-            if (ibase_float && i > 0 && (s[i - 1] == 'e' || s[i - 1] == 'E'))
-                continue;
-            pos = i;
-            found = s[i];
-            break;
+#define T_NUM   0
+#define T_PLUS  1
+#define T_MINUS 2
+#define T_STAR  3
+#define T_SLASH 4
+#define T_PCT   5
+#define T_CARET 6
+#define T_LP    7
+#define T_RP    8
+#define T_END   9
+#define T_ERR  10
+
+typedef struct {
+    const char *cur;       /* current scan position */
+    int         tok;       /* lookahead token type */
+    int64_t     ival;      /* numeric value (integer mode) */
+    double      dval;      /* numeric value (float mode) */
+    int         err;       /* non-zero after any error */
+    char        errmsg[80];
+} Parser;
+
+static void px_advance(Parser *px) {
+    while (isspace((unsigned char)*px->cur))
+        px->cur++;
+
+    switch (*px->cur) {
+    case '\0': px->tok = T_END;   return;
+    case '+':  px->tok = T_PLUS;  px->cur++; return;
+    case '-':  px->tok = T_MINUS; px->cur++; return;
+    case '(':  px->tok = T_LP;    px->cur++; return;
+    case ')':  px->tok = T_RP;    px->cur++; return;
+    case '%':  px->tok = T_PCT;   px->cur++; return;
+    case '^':  px->tok = T_CARET; px->cur++; return;
+    case '/':  px->tok = T_SLASH; px->cur++; return;
+    case '*':
+        if (px->cur[1] == '*') { px->tok = T_CARET; px->cur += 2; }
+        else                   { px->tok = T_STAR;  px->cur++;    }
+        return;
+    }
+
+    /* 'res' token */
+    if (px->cur[0] == 'r' && px->cur[1] == 'e' && px->cur[2] == 's') {
+        char nx = px->cur[3];
+        if (!isalnum((unsigned char)nx) && nx != '_') {
+            px->tok  = T_NUM;
+            px->ival = last_result;
+            px->dval = last_result_d;
+            px->cur += 3;
+            return;
         }
     }
 
-    if (found == 0) {
-        for (int i = (int)strlen(s) - 1; i >= 0; i--) {
-            if (s[i] == '*' || s[i] == '/' || s[i] == '%') {
-                pos = i;
-                found = s[i];
-                break;
+    /* numeric literal */
+    if (ibase_float) {
+        char *end;
+        errno = 0;
+        px->dval = strtod(px->cur, &end);
+        if (end == px->cur || errno) {
+            snprintf(px->errmsg, sizeof(px->errmsg), "invalid token '%.20s'", px->cur);
+            px->err = 1; px->tok = T_ERR;
+            return;
+        }
+        px->cur = end;
+        px->tok = T_NUM;
+    } else {
+        const char *q = px->cur;
+        while (1) {
+            int d;
+            if      (*q >= '0' && *q <= '9') d = *q - '0';
+            else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
+            else if (*q >= 'A' && *q <= 'F') d = *q - 'A' + 10;
+            else break;
+            if (d >= ibase) break;
+            q++;
+        }
+        if (q == px->cur) {
+            snprintf(px->errmsg, sizeof(px->errmsg), "invalid token '%.20s'", px->cur);
+            px->err = 1; px->tok = T_ERR;
+            return;
+        }
+        char nbuf[64];
+        size_t n = (size_t)(q - px->cur);
+        if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
+        memcpy(nbuf, px->cur, n); nbuf[n] = 0;
+        char *end;
+        errno = 0;
+        px->ival = (int64_t)strtoll(nbuf, &end, ibase);
+        if (errno) {
+            snprintf(px->errmsg, sizeof(px->errmsg), "number out of range");
+            px->err = 1; px->tok = T_ERR;
+            return;
+        }
+        px->cur = q;
+        px->tok = T_NUM;
+    }
+}
+
+/* Forward declarations needed for parenthesised sub-expressions. */
+static int64_t px_expr_i(Parser *px);
+static double  px_expr_d(Parser *px);
+
+/* ── integer recursive-descent ── */
+
+static int64_t px_primary_i(Parser *px) {
+    if (px->err) return 0;
+    if (px->tok == T_NUM) {
+        int64_t v = px->ival; px_advance(px); return v;
+    }
+    if (px->tok == T_LP) {
+        px_advance(px);
+        int64_t v = px_expr_i(px);
+        if (!px->err) {
+            if (px->tok != T_RP) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "expected ')'");
+                px->err = 1;
+            } else {
+                px_advance(px);
             }
         }
+        return v;
     }
-
-    if (found == 0) {
-        for (int i = (int)strlen(s) - 1; i >= 0; i--) {
-            if (s[i] == '^') {
-                pos = i;
-                found = s[i];
-                break;
-            }
-        }
-    }
-
-    if (found == 0)
-        return -1;
-    *op = found;
-    *op_pos = pos;
+    snprintf(px->errmsg, sizeof(px->errmsg), "unexpected token");
+    px->err = 1;
     return 0;
 }
 
+static int64_t px_unary_i(Parser *px) {
+    if (px->err) return 0;
+    if (px->tok == T_MINUS) { px_advance(px); return -px_unary_i(px); }
+    if (px->tok == T_PLUS)  { px_advance(px); return  px_unary_i(px); }
+    return px_primary_i(px);
+}
+
+static int64_t px_power_i(Parser *px) {
+    if (px->err) return 0;
+    int64_t base = px_unary_i(px);
+    if (!px->err && px->tok == T_CARET) {
+        px_advance(px);
+        int64_t exp = px_power_i(px);  /* right-associative recursion */
+        if (px->err) return 0;
+        if (exp < 0) {
+            snprintf(px->errmsg, sizeof(px->errmsg), "negative exponent");
+            px->err = 1; return 0;
+        }
+        int64_t result = 1;
+        while (exp > 0) {
+            if (exp & 1) result *= base;
+            exp >>= 1;
+            if (exp > 0) base *= base;
+        }
+        return result;
+    }
+    return base;
+}
+
+static int64_t px_term_i(Parser *px) {
+    if (px->err) return 0;
+    int64_t lhs = px_power_i(px);
+    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
+        int op = px->tok; px_advance(px);
+        int64_t rhs = px_power_i(px);
+        if (px->err) break;
+        if (op == T_STAR) {
+            lhs *= rhs;
+        } else if (op == T_SLASH) {
+            if (rhs == 0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "division by zero");
+                px->err = 1; break;
+            }
+            if (lhs == INT64_MIN && rhs == -1) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "overflow");
+                px->err = 1; break;
+            }
+            lhs /= rhs;
+        } else {
+            if (rhs == 0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
+                px->err = 1; break;
+            }
+            lhs = (lhs == INT64_MIN && rhs == -1) ? 0 : lhs % rhs;
+        }
+    }
+    return lhs;
+}
+
+static int64_t px_expr_i(Parser *px) {
+    if (px->err) return 0;
+    int64_t lhs = px_term_i(px);
+    while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
+        int op = px->tok; px_advance(px);
+        int64_t rhs = px_term_i(px);
+        if (px->err) break;
+        lhs = (op == T_PLUS) ? lhs + rhs : lhs - rhs;
+    }
+    return lhs;
+}
+
+/* ── floating-point recursive-descent ── */
+
+static double px_primary_d(Parser *px) {
+    if (px->err) return 0.0;
+    if (px->tok == T_NUM) {
+        double v = px->dval; px_advance(px); return v;
+    }
+    if (px->tok == T_LP) {
+        px_advance(px);
+        double v = px_expr_d(px);
+        if (!px->err) {
+            if (px->tok != T_RP) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "expected ')'");
+                px->err = 1;
+            } else {
+                px_advance(px);
+            }
+        }
+        return v;
+    }
+    snprintf(px->errmsg, sizeof(px->errmsg), "unexpected token");
+    px->err = 1;
+    return 0.0;
+}
+
+static double px_unary_d(Parser *px) {
+    if (px->err) return 0.0;
+    if (px->tok == T_MINUS) { px_advance(px); return -px_unary_d(px); }
+    if (px->tok == T_PLUS)  { px_advance(px); return  px_unary_d(px); }
+    return px_primary_d(px);
+}
+
+static double px_power_d(Parser *px) {
+    if (px->err) return 0.0;
+    double base = px_unary_d(px);
+    if (!px->err && px->tok == T_CARET) {
+        px_advance(px);
+        double exp = px_power_d(px);
+        return px->err ? 0.0 : pow(base, exp);
+    }
+    return base;
+}
+
+static double px_term_d(Parser *px) {
+    if (px->err) return 0.0;
+    double lhs = px_power_d(px);
+    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
+        int op = px->tok; px_advance(px);
+        double rhs = px_power_d(px);
+        if (px->err) break;
+        if (op == T_STAR) {
+            lhs *= rhs;
+        } else if (op == T_SLASH) {
+            if (rhs == 0.0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "division by zero");
+                px->err = 1; break;
+            }
+            lhs /= rhs;
+        } else {
+            if (rhs == 0.0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
+                px->err = 1; break;
+            }
+            lhs = fmod(lhs, rhs);
+        }
+    }
+    return lhs;
+}
+
+static double px_expr_d(Parser *px) {
+    if (px->err) return 0.0;
+    double lhs = px_term_d(px);
+    while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
+        int op = px->tok; px_advance(px);
+        double rhs = px_term_d(px);
+        if (px->err) break;
+        lhs = (op == T_PLUS) ? lhs + rhs : lhs - rhs;
+    }
+    return lhs;
+}
+
 /**
- * @brief Parse and evaluate a single expression line.
+ * @brief Parse and evaluate a full expression, updating @c last_result on success.
  *
- * If no operator is found the input is treated as a bare number and printed
- * in @c obase (useful for base conversion or echoing @c res). Division and
- * modulo by zero, and signed overflow on division, are reported as errors to
- * stderr. On success the result is stored in @c last_result / @c last_result_d
- * so it can be referenced as @c res in the next expression.
+ * Supports multiple operations, operator precedence (+- < *\/% < ^), and
+ * parentheses. Division/modulo by zero and signed overflow on division are
+ * reported as errors to stderr. On success the result is stored in
+ * @c last_result / @c last_result_d so it can be referenced as @c res.
  * @param line Null-terminated input line (whitespace already trimmed).
  */
 static void handle_expression(const char *line) {
-    char buf[LINE_MAX_LEN];
-    strncpy(buf, line, LINE_MAX_LEN - 1);
-    buf[LINE_MAX_LEN - 1] = 0;
-
-    /* Normalize ** to ^ */
-    for (int i = 0; buf[i] && buf[i + 1]; i++) {
-        if (buf[i] == '*' && buf[i + 1] == '*') {
-            buf[i] = '^';
-            memmove(buf + i + 1, buf + i + 2, strlen(buf + i + 2) + 1);
-        }
-    }
-
-    char op = 0;
-    int op_pos = -1;
-
-    if (find_operator(buf, &op, &op_pos) != 0) {
-        /* No operator — bare number (base conversion / echo) */
-        if (ibase_float) {
-            double val;
-            if (parse_float(trim(buf), &val) == 0) {
-                if (obase_float)
-                    printf("%g\n", val);
-                else
-                    print_result((int64_t)val);
-                last_result_d = val;
-                last_result = (int64_t)val;
-            } else {
-                fprintf(stderr, "error: unrecognized input: %s\n", line);
-            }
-        } else {
-            int64_t val;
-            if (parse_number(trim(buf), &val) == 0) {
-                if (obase_float)
-                    printf("%g\n", (double)val);
-                else
-                    print_result(val);
-                last_result = val;
-                last_result_d = (double)val;
-            } else {
-                fprintf(stderr, "error: unrecognized input: %s\n", line);
-            }
-        }
-        return;
-    }
-
-    char lhs_s[LINE_MAX_LEN], rhs_s[LINE_MAX_LEN];
-    strncpy(lhs_s, buf, (size_t)op_pos);
-    lhs_s[op_pos] = 0;
-    strncpy(rhs_s, buf + op_pos + 1, LINE_MAX_LEN - 1);
-    rhs_s[LINE_MAX_LEN - 1] = 0;
-
-    char *lhs_t = trim(lhs_s);
-    char *rhs_t = trim(rhs_s);
+    Parser px;
+    memset(&px, 0, sizeof(px));
+    px.cur = line;
+    px_advance(&px);
 
     if (ibase_float) {
-        /* --- floating-point path --- */
-        double lhs, rhs, result;
-        if (parse_float(lhs_t, &lhs) != 0) {
-            fprintf(stderr, "error: invalid left operand: %s\n", lhs_t);
-            return;
-        }
-        if (parse_float(rhs_t, &rhs) != 0) {
-            fprintf(stderr, "error: invalid right operand: %s\n", rhs_t);
-            return;
-        }
-        switch (op) {
-        case '+':
-            result = lhs + rhs;
-            break;
-        case '-':
-            result = lhs - rhs;
-            break;
-        case '*':
-            result = lhs * rhs;
-            break;
-        case '/':
-            if (rhs == 0.0) {
-                fprintf(stderr, "error: division by zero\n");
-                return;
-            }
-            result = lhs / rhs;
-            break;
-        case '%':
-            if (rhs == 0.0) {
-                fprintf(stderr, "error: modulo by zero\n");
-                return;
-            }
-            result = fmod(lhs, rhs);
-            break;
-        case '^':
-            result = pow(lhs, rhs);
-            break;
-        default:
-            fprintf(stderr, "error: unknown operator\n");
-            return;
-        }
-        if (obase_float)
-            printf("%g\n", result);
-        else
-            print_result((int64_t)result);
+        double result = px_expr_d(&px);
+        if (px.err) { fprintf(stderr, "error: %s\n", px.errmsg); return; }
+        if (px.tok != T_END) { fprintf(stderr, "error: unexpected input\n"); return; }
+        if (obase_float) printf("%g\n", result);
+        else             print_result((int64_t)result);
         last_result_d = result;
-        last_result = (int64_t)result;
-        return;
+        last_result   = (int64_t)result;
+    } else {
+        int64_t result = px_expr_i(&px);
+        if (px.err) { fprintf(stderr, "error: %s\n", px.errmsg); return; }
+        if (px.tok != T_END) { fprintf(stderr, "error: unexpected input\n"); return; }
+        if (obase_float) printf("%g\n", (double)result);
+        else             print_result(result);
+        last_result   = result;
+        last_result_d = (double)result;
     }
-
-    /* --- integer path --- */
-    int64_t lhs, rhs;
-    if (parse_number(lhs_t, &lhs) != 0) {
-        fprintf(stderr, "error: invalid left operand: %s\n", lhs_t);
-        return;
-    }
-    if (parse_number(rhs_t, &rhs) != 0) {
-        fprintf(stderr, "error: invalid right operand: %s\n", rhs_t);
-        return;
-    }
-
-    int64_t result;
-    switch (op) {
-    case '+':
-        result = lhs + rhs;
-        break;
-    case '-':
-        result = lhs - rhs;
-        break;
-    case '*':
-        result = lhs * rhs;
-        break;
-    case '/':
-        if (rhs == 0) {
-            fprintf(stderr, "error: division by zero\n");
-            return;
-        }
-        if (lhs == INT64_MIN && rhs == -1) {
-            fprintf(stderr, "error: overflow\n");
-            return;
-        }
-        result = lhs / rhs;
-        break;
-    case '%':
-        if (rhs == 0) {
-            fprintf(stderr, "error: modulo by zero\n");
-            return;
-        }
-        if (lhs == INT64_MIN && rhs == -1) {
-            result = 0;
-            break;
-        }
-        result = lhs % rhs;
-        break;
-    case '^':
-        if (rhs < 0) {
-            fprintf(stderr, "error: negative exponent\n");
-            return;
-        }
-        result = 1;
-        {
-            int64_t base = lhs;
-            int64_t exp = rhs;
-            while (exp > 0) {
-                if (exp & 1)
-                    result *= base;
-                exp >>= 1;
-                if (exp > 0)
-                    base *= base;
-            }
-        }
-        break;
-    default:
-        fprintf(stderr, "error: unknown operator\n");
-        return;
-    }
-    if (obase_float)
-        printf("%g\n", (double)result);
-    else
-        print_result(result);
-    last_result = result;
-    last_result_d = (double)result;
 }
 
 /**

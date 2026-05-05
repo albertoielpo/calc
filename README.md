@@ -1,6 +1,6 @@
 # Calc
 
-A simple interactive calculator for the terminal, inspired by `bc` but intentionally minimal. Supports basic arithmetic operations and configurable input/output bases (2, 8, 10, 16).
+A simple interactive calculator for the terminal, inspired by `bc` but intentionally minimal. Supports multi-operation expressions with full operator precedence and parentheses, and configurable input/output bases (2, 8, 10, 16).
 
 ## Binary
 
@@ -24,32 +24,36 @@ The prompt `> ` appears and the calculator waits for input. Type `exit` or `quit
 
 ### Arithmetic
 
-Enter an expression with two operands and one operator:
+Expressions can contain multiple operators. Standard precedence applies — `^` binds tightest, then `* / %`, then `+ -`. Use parentheses to override:
 
 ```
+> 10+10+10
+30
+> 2+3*4
+14
+> (2+3)*4
+20
+> 10/2+3*4-1
+16
 > 15+15
 30
-> 100-37
-63
-> 8*7
-56
 > 100/3
 33
 > 100%3
 1
 > 10^2
 100
-> 10**2
-100
+> 2^3^2
+512
 ```
 
 Supported operators: `+` `-` `*` `/` `%` `^` (also `**`)
 
-Integer division truncates toward zero. Modulo follows the sign of the dividend. Exponentiation requires a non-negative integer exponent.
+`^` is right-associative (`2^3^2` = `2^(3^2)` = 512). Integer division truncates toward zero. Modulo follows the sign of the dividend. Exponentiation requires a non-negative integer exponent.
 
 ### Result variable
 
-The last computed result is stored in `res` and can be used as an operand in any subsequent expression:
+The last computed result is stored in `res` and can be used anywhere a number is expected in any subsequent expression:
 
 ```
 > 1+1
@@ -58,13 +62,15 @@ The last computed result is stored in `res` and can be used as an operand in any
 3
 > res*res
 9
+> res*2+1
+19
 > -3
 -3
 > res+10
 7
 ```
 
-`res` is valid anywhere a number is expected — left-hand side, right-hand side, or alone (useful for repeated base conversion). It starts at `0` and is updated after every successful computation, including in floating-point mode.
+`res` starts at `0` and is updated after every successful computation, including in floating-point mode. Use it alone to echo or repeat a base conversion.
 
 ### Base conversion
 
@@ -92,7 +98,7 @@ Use `10f` (case-insensitive) as the base to switch a channel to IEEE-754 double 
 
 Exponentiation with a `double` exponent (`2.0^0.5` = √2) and `fmod` for `%` are supported. Division and modulo by zero are still reported as errors.
 
-Hexadecimal digits must be uppercase (`A`–`F`).
+Hexadecimal digits may be uppercase or lowercase (`A`–`F` / `a`–`f`).
 
 ```
 > ibase 16
@@ -150,10 +156,10 @@ A bare number with no operator performs a plain base conversion:
 | Division by zero | `error: division by zero` |
 | Modulo by zero | `error: modulo by zero` |
 | Arithmetic overflow | `error: overflow` |
-| Invalid digit for current base | `error: invalid left/right operand: …` |
+| Invalid digit / token | `error: invalid token '…'` |
 | Negative exponent | `error: negative exponent` |
+| Missing closing parenthesis | `error: expected ')'` |
 | Unsupported base | `error: ibase must be 2, 8, 10, 10f or 16` |
-| Unrecognized input | `error: unrecognized input: …` |
 
 ## Limits
 
