@@ -36,7 +36,7 @@ static int valid_base(int b) {
 /* Returns non-zero if s is "10f" or "10F". */
 static int is_float_base(const char *s) {
     return s[0] == '1' && s[1] == '0' &&
-           (s[2] == 'f' || s[2] == 'F') && s[3] == '\0';
+           (s[2] == 'f' || s[2] == 'F') && s[3] == 0;
 }
 
 /**
@@ -78,7 +78,7 @@ static void print_result(int64_t val) {
             target = 64;
         for (int j = 0; j < target; j++)
             buf[j] = (char)('0' + ((uval >> (target - 1 - j)) & 1));
-        buf[target] = '\0';
+        buf[target] = 0;
         printf("%s\n", buf);
         return;
     }
