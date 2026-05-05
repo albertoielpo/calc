@@ -13,7 +13,7 @@ CFLAGS  = -static -Wextra -Wall -Wpedantic -O2 -g -std=c99
 TARGET  = calc
 SRCS    = calc.c
 
-.PHONY: all run clean
+.PHONY: all run clean test
 
 all: $(TARGET)
 
@@ -25,3 +25,6 @@ run: $(TARGET)
 
 clean:
 	rm -f $(TARGET) *.o
+
+test: $(TARGET)
+	./calc_test

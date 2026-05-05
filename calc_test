@@ -31,11 +31,149 @@ test_base10_sum(){
     assert_test $res "10"
 }
 
+test_base10_subtraction() {
+    local res=$(execute_test "10-3")
+    assert_test $res "7"
+}
+
+test_base10_multiplication() {
+    local res=$(execute_test "3*4")
+    assert_test $res "12"
+}
+
+test_base10_division() {
+    local res=$(execute_test "10/3")
+    assert_test $res "3"
+}
+
+test_base10_modulo() {
+    local res=$(execute_test "10%3")
+    assert_test $res "1"
+}
+
+test_base10_exponentiation() {
+    local res=$(execute_test "2^8")
+    assert_test $res "256"
+}
+
+test_base10_exponentiation_double_star() {
+    local res=$(execute_test "2**8")
+    assert_test $res "256"
+}
+
+test_base10_negative_operand() {
+    local res=$(execute_test "-5+3")
+    assert_test "$res" "-2"
+}
+
+test_base10_negative_result() {
+    local res=$(execute_test "3-10")
+    assert_test "$res" "-7"
+}
+
+test_base10_zero() {
+    local res=$(execute_test "0+0")
+    assert_test $res "0"
+}
+
 test_base16_sum() {
     local res=$(execute_test "ibase 10" "obase 16" "9+1")
     assert_test $res "A"
 }
 
+test_base16_input() {
+    local res=$(execute_test "ibase 16" "obase 10" "A+5")
+    assert_test $res "15"
+}
+
+test_base16_carry() {
+    local res=$(execute_test "ibase 16" "obase 16" "F+1")
+    assert_test $res "10"
+}
+
+test_base2_output() {
+    local res=$(execute_test "ibase 10" "obase 2" "5+3")
+    assert_test $res "1000"
+}
+
+test_base2_input() {
+    local res=$(execute_test "ibase 2" "obase 10" "1010+1")
+    assert_test $res "11"
+}
+
+test_base8_output() {
+    local res=$(execute_test "ibase 10" "obase 8" "8+1")
+    assert_test $res "11"
+}
+
+test_base8_input() {
+    local res=$(execute_test "ibase 8" "obase 10" "10+1")
+    assert_test $res "9"
+}
+
+test_base_conversion_dec_to_hex() {
+    local res=$(execute_test "ibase 10" "obase 16" "255")
+    assert_test $res "FF"
+}
+
+test_base_conversion_hex_to_dec() {
+    local res=$(execute_test "ibase 16" "obase 10" "FF")
+    assert_test $res "255"
+}
+
+test_base_conversion_dec_to_bin() {
+    local res=$(execute_test "ibase 10" "obase 2" "10")
+    assert_test $res "1010"
+}
+
+test_float_addition() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "1.5+2.5")
+    assert_test $res "4"
+}
+
+test_float_multiplication() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "1.5*2")
+    assert_test $res "3"
+}
+
+test_float_division() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "10/4")
+    assert_test $res "2.5"
+}
+
+test_float_exponentiation() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "2^10")
+    assert_test $res "1024"
+}
+
+test_float_to_int_output() {
+    local res=$(execute_test "ibase 10f" "obase 10" "3.9+0.1")
+    assert_test $res "4"
+}
+
 # ----------------- TEST EXECUTIONS -----------------
 test_base10_sum
+test_base10_subtraction
+test_base10_multiplication
+test_base10_division
+test_base10_modulo
+test_base10_exponentiation
+test_base10_exponentiation_double_star
+test_base10_negative_operand
+test_base10_negative_result
+test_base10_zero
 test_base16_sum
+test_base16_input
+test_base16_carry
+test_base2_output
+test_base2_input
+test_base8_output
+test_base8_input
+test_base_conversion_dec_to_hex
+test_base_conversion_hex_to_dec
+test_base_conversion_dec_to_bin
+test_float_addition
+test_float_multiplication
+test_float_division
+test_float_exponentiation
+test_float_to_int_output
