@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+execute_test() {
+    while IFS= read -r line; do
+        # if the line starts with > then analyze the output
+        if [ ">" == "${line:0:1}" ]; then
+            # read line and redirect to tr which strips "> " and place into res
+            local res=$(tr -d "> " <<< "$line")
+            echo $res
+            return 0
+        fi
+    done < <(printf '%s\n' "$@" | ./bin/calc)
+    return 1
+}
+
+assert_test() {
+    if [[ "$1" == "$2" ]]; then
+        # test pass
+        echo "[PASS] ${FUNCNAME[1]}"
+        return 0
+    fi
+    # block execution
+    echo "[FAIL] ${FUNCNAME[1]} Expected $2 got $1"
+    exit 1
+}
+
+# ----------------- TEST DESCRIPTIONS -----------------
+
+test_base10_sum(){
+    local res=$(execute_test "9+1")
+    assert_test $res "10"
+}
+
+test_base16_sum() {
+    local res=$(execute_test "ibase 10" "obase 16" "9+1")
+    assert_test $res "A"
+}
+
+# ----------------- TEST EXECUTIONS -----------------
+test_base10_sum
+test_base16_sum
