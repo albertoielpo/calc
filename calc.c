@@ -1,10 +1,11 @@
 /**
  * @file calc.c
- * @brief Interactive integer calculator with configurable input/output bases.
+ * @brief Interactive calculator with configurable input/output bases.
  *
- * Supports +, -, *, /, % operations on 64-bit signed integers.
- * Input and output bases can be set to 2, 8, 10, or 16 via the
- * @c ibase and @c obase commands.
+ * Supports +, -, *, /, %, ^ operations on 64-bit signed integers or IEEE-754
+ * doubles (when ibase/obase are set to @c 10f). Input and output bases can be
+ * set to 2, 8, 10, or 16 via the @c ibase and @c obase commands. The special
+ * token @c res always holds the last computed result.
  */
 
 #include <ctype.h>
@@ -17,12 +18,15 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.2.0"
+#define CALC_VERSION "1.3.0"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
 static int ibase_float = 0; /**< Non-zero when ibase is "10f" (floating-point input). */
 static int obase_float = 0; /**< Non-zero when obase is "10f" (floating-point output). */
+
+static int64_t last_result = 0;    /**< Last computed integer result (accessible as "res"). */
+static double last_result_d = 0.0; /**< Last computed floating-point result (accessible as "res"). */
 
 /**
  * @brief Check whether @p b is an accepted number base.
@@ -122,8 +126,9 @@ static void print_result(int64_t val) {
 /**
  * @brief Parse a number token using the current input base (@c ibase).
  *
- * Accepts an optional leading @c - sign. Rejects digits that are
- * out of range for @c ibase.
+ * Accepts an optional leading @c - sign. Rejects digits out of range for
+ * @c ibase. The special token @c res (or @c -res) resolves to the last
+ * computed integer result without involving @c ibase digit validation.
  * @param s   Null-terminated token to parse.
  * @param out Receives the parsed value on success.
  * @return    0 on success, -1 on parse error or invalid digit.
@@ -131,6 +136,14 @@ static void print_result(int64_t val) {
 static int parse_number(const char *s, int64_t *out) {
     if (*s == 0)
         return -1;
+    if (strcmp(s, "res") == 0) {
+        *out = last_result;
+        return 0;
+    }
+    if (*s == '-' && strcmp(s + 1, "res") == 0) {
+        *out = -last_result;
+        return 0;
+    }
     char *end;
     errno = 0;
     *out = (int64_t)strtoll(s, &end, ibase);
@@ -153,10 +166,20 @@ static int parse_number(const char *s, int64_t *out) {
     return 0;
 }
 
-/* Parse a decimal floating-point token into *out. Returns 0 on success, -1 on error. */
+/* Parse a decimal floating-point token into *out.
+ * The special token "res" (or "-res") resolves to last_result_d.
+ * Returns 0 on success, -1 on error. */
 static int parse_float(const char *s, double *out) {
     if (*s == 0)
         return -1;
+    if (strcmp(s, "res") == 0) {
+        *out = last_result_d;
+        return 0;
+    }
+    if (*s == '-' && strcmp(s + 1, "res") == 0) {
+        *out = -last_result_d;
+        return 0;
+    }
     char *end;
     errno = 0;
     *out = strtod(s, &end);
@@ -242,10 +265,11 @@ static int find_operator(const char *s, char *op, int *op_pos) {
 /**
  * @brief Parse and evaluate a single expression line.
  *
- * If no operator is found the input is treated as a bare number and
- * printed in @c obase (useful for base conversion). Division and
- * modulo by zero, and signed overflow on division, are reported as
- * errors to stderr.
+ * If no operator is found the input is treated as a bare number and printed
+ * in @c obase (useful for base conversion or echoing @c res). Division and
+ * modulo by zero, and signed overflow on division, are reported as errors to
+ * stderr. On success the result is stored in @c last_result / @c last_result_d
+ * so it can be referenced as @c res in the next expression.
  * @param line Null-terminated input line (whitespace already trimmed).
  */
 static void handle_expression(const char *line) {
@@ -273,6 +297,8 @@ static void handle_expression(const char *line) {
                     printf("%g\n", val);
                 else
                     print_result((int64_t)val);
+                last_result_d = val;
+                last_result = (int64_t)val;
             } else {
                 fprintf(stderr, "error: unrecognized input: %s\n", line);
             }
@@ -283,6 +309,8 @@ static void handle_expression(const char *line) {
                     printf("%g\n", (double)val);
                 else
                     print_result(val);
+                last_result = val;
+                last_result_d = (double)val;
             } else {
                 fprintf(stderr, "error: unrecognized input: %s\n", line);
             }
@@ -345,6 +373,8 @@ static void handle_expression(const char *line) {
             printf("%g\n", result);
         else
             print_result((int64_t)result);
+        last_result_d = result;
+        last_result = (int64_t)result;
         return;
     }
 
@@ -418,6 +448,8 @@ static void handle_expression(const char *line) {
         printf("%g\n", (double)result);
     else
         print_result(result);
+    last_result = result;
+    last_result_d = (double)result;
 }
 
 /**
@@ -425,9 +457,11 @@ static void handle_expression(const char *line) {
  *
  * Reads one line at a time from stdin. Special commands:
  *   - @c exit / @c quit — terminate the session.
- *   - @c ibase @c \<n\> — set the input base (2, 8, 10, 16).
- *   - @c obase @c \<n\> — set the output base (2, 8, 10, 16).
+ *   - @c ibase @c \<n\> — set the input base (2, 8, 10, 10f, 16).
+ *   - @c obase @c \<n\> — set the output base (2, 8, 10, 10f, 16).
  *   - Any other input is passed to handle_expression().
+ * The token @c res in any expression refers to the last computed result
+ * (initially 0).
  * @return 0 on normal exit.
  */
 int main(void) {

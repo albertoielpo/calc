@@ -47,6 +47,25 @@ Supported operators: `+` `-` `*` `/` `%` `^` (also `**`)
 
 Integer division truncates toward zero. Modulo follows the sign of the dividend. Exponentiation requires a non-negative integer exponent.
 
+### Result variable
+
+The last computed result is stored in `res` and can be used as an operand in any subsequent expression:
+
+```
+> 1+1
+2
+> res+1
+3
+> res*res
+9
+> -3
+-3
+> res+10
+7
+```
+
+`res` is valid anywhere a number is expected — left-hand side, right-hand side, or alone (useful for repeated base conversion). It starts at `0` and is updated after every successful computation, including in floating-point mode.
+
 ### Base conversion
 
 `ibase` sets the input base, `obase` sets the output base. Both default to 10. Supported values: `2`, `8`, `10`, `10f`, `16`.

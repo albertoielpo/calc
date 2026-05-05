@@ -2,15 +2,27 @@
 
 execute_test() {
     while IFS= read -r line; do
-        # if the line starts with > then analyze the output
         if [ ">" == "${line:0:1}" ]; then
-            # read line and redirect to tr which strips "> " and place into res
-            local res=$(tr -d "> " <<< "$line")
-            echo $res
+            local val
+            val=$(tr -d "> " <<< "$line")
+            echo "$val"
             return 0
         fi
     done < <(printf '%s\n' "$@" | ./bin/calc)
     return 1
+}
+
+# Like execute_test but returns the LAST non-empty result (needed for res tests).
+execute_test_last() {
+    local last=""
+    while IFS= read -r line; do
+        if [ ">" == "${line:0:1}" ]; then
+            local val
+            val=$(tr -d "> " <<< "$line")
+            [ -n "$val" ] && last=$val
+        fi
+    done < <(printf '%s\n' "$@" | ./bin/calc)
+    echo "$last"
 }
 
 assert_test() {
@@ -171,6 +183,36 @@ test_float_to_int_output() {
     assert_test $res "4"
 }
 
+test_res_basic() {
+    local res=$(execute_test_last "1+1" "res+1")
+    assert_test "$res" "3"
+}
+
+test_res_lhs() {
+    local res=$(execute_test_last "5" "res*2")
+    assert_test "$res" "10"
+}
+
+test_res_rhs() {
+    local res=$(execute_test_last "5" "10+res")
+    assert_test "$res" "15"
+}
+
+test_res_negative() {
+    local res=$(execute_test_last "-3" "res+10")
+    assert_test "$res" "7"
+}
+
+test_res_alone() {
+    local res=$(execute_test_last "42" "res")
+    assert_test "$res" "42"
+}
+
+test_res_float() {
+    local res=$(execute_test_last "ibase 10f" "obase 10f" "1.5+1.5" "res*2")
+    assert_test "$res" "6"
+}
+
 # ----------------- TEST EXECUTIONS -----------------
 test_base10_sum
 test_base10_subtraction
@@ -201,3 +243,9 @@ test_float_multiplication
 test_float_division
 test_float_exponentiation
 test_float_to_int_output
+test_res_basic
+test_res_lhs
+test_res_rhs
+test_res_negative
+test_res_alone
+test_res_float
