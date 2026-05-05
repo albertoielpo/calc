@@ -17,7 +17,7 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.1.0"
+#define CALC_VERSION "1.2.0"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
@@ -63,6 +63,25 @@ static void print_result(int64_t val) {
     char buf[128];
     int neg = 0;
     uint64_t uval;
+
+    if (obase == 2 && val < 0) {
+        /* 2's complement: print the raw bit pattern at the minimum standard width */
+        uval = (uint64_t)val;
+        int target;
+        if (val >= -128)
+            target = 8;
+        else if (val >= -32768)
+            target = 16;
+        else if (val >= INT32_MIN)
+            target = 32;
+        else
+            target = 64;
+        for (int j = 0; j < target; j++)
+            buf[j] = (char)('0' + ((uval >> (target - 1 - j)) & 1));
+        buf[target] = '\0';
+        printf("%s\n", buf);
+        return;
+    }
 
     if (val < 0) {
         neg = 1;

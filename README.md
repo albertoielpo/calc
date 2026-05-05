@@ -89,7 +89,7 @@ A
 10
 ```
 
-Binary output is left-padded with zeros to the nearest byte boundary (8, 16, 32, or 64 bits):
+Binary output is left-padded with zeros to the nearest byte boundary (8, 16, 32, or 64 bits). Negative values are shown in two's complement:
 
 ```
 > ibase 10
@@ -100,6 +100,12 @@ Binary output is left-padded with zeros to the nearest byte boundary (8, 16, 32,
 11111111
 > 256
 0000000100000000
+> -2
+11111110
+> -128
+10000000
+> -129
+1111111101111111
 ```
 
 ```

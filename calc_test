@@ -126,6 +126,26 @@ test_base_conversion_dec_to_bin() {
     assert_test $res "00001010"
 }
 
+test_base2_negative_8bit() {
+    local res=$(execute_test "ibase 10" "obase 2" "-2")
+    assert_test $res "11111110"
+}
+
+test_base2_negative_min8bit() {
+    local res=$(execute_test "ibase 10" "obase 2" "-128")
+    assert_test $res "10000000"
+}
+
+test_base2_negative_16bit() {
+    local res=$(execute_test "ibase 10" "obase 2" "-129")
+    assert_test $res "1111111101111111"
+}
+
+test_base2_negative_result() {
+    local res=$(execute_test "ibase 10" "obase 2" "3-10")
+    assert_test $res "11111001"
+}
+
 test_float_addition() {
     local res=$(execute_test "ibase 10f" "obase 10f" "1.5+2.5")
     assert_test $res "4"
@@ -172,6 +192,10 @@ test_base8_input
 test_base_conversion_dec_to_hex
 test_base_conversion_hex_to_dec
 test_base_conversion_dec_to_bin
+test_base2_negative_8bit
+test_base2_negative_min8bit
+test_base2_negative_16bit
+test_base2_negative_result
 test_float_addition
 test_float_multiplication
 test_float_division
