@@ -19,7 +19,7 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.4.0"
+#define CALC_VERSION "1.4.1"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
@@ -130,12 +130,12 @@ static void print_result(int64_t val) {
  * @return  Pointer to the first non-whitespace character within @p s.
  */
 static char *trim(char *s) {
-    while (isspace((unsigned char)*s))
+    while (isspace((uint8_t)*s))
         s++;
     if (*s == 0)
         return s;
     char *end = s + strlen(s) - 1;
-    while (end > s && isspace((unsigned char)*end))
+    while (end > s && isspace((uint8_t)*end))
         *end-- = 0;
     return s;
 }
@@ -152,51 +152,79 @@ static char *trim(char *s) {
  * '**' is accepted as a synonym for '^'.
  */
 
-#define T_NUM   0
-#define T_PLUS  1
+#define T_NUM 0
+#define T_PLUS 1
 #define T_MINUS 2
-#define T_STAR  3
+#define T_STAR 3
 #define T_SLASH 4
-#define T_PCT   5
+#define T_PCT 5
 #define T_CARET 6
-#define T_LP    7
-#define T_RP    8
-#define T_END   9
-#define T_ERR  10
+#define T_LP 7
+#define T_RP 8
+#define T_END 9
+#define T_ERR 10
 
 typedef struct {
-    const char *cur;       /* current scan position */
-    int         tok;       /* lookahead token type */
-    int64_t     ival;      /* numeric value (integer mode) */
-    double      dval;      /* numeric value (float mode) */
-    int         err;       /* non-zero after any error */
-    char        errmsg[80];
+    const char *cur; /* current scan position */
+    int tok;         /* lookahead token type */
+    int64_t ival;    /* numeric value (integer mode) */
+    double dval;     /* numeric value (float mode) */
+    int err;         /* non-zero after any error */
+    char errmsg[80];
 } Parser;
 
 static void px_advance(Parser *px) {
-    while (isspace((unsigned char)*px->cur))
+    while (isspace((uint8_t)*px->cur))
         px->cur++;
 
     switch (*px->cur) {
-    case '\0': px->tok = T_END;   return;
-    case '+':  px->tok = T_PLUS;  px->cur++; return;
-    case '-':  px->tok = T_MINUS; px->cur++; return;
-    case '(':  px->tok = T_LP;    px->cur++; return;
-    case ')':  px->tok = T_RP;    px->cur++; return;
-    case '%':  px->tok = T_PCT;   px->cur++; return;
-    case '^':  px->tok = T_CARET; px->cur++; return;
-    case '/':  px->tok = T_SLASH; px->cur++; return;
+    case '\0':
+        px->tok = T_END;
+        return;
+    case '+':
+        px->tok = T_PLUS;
+        px->cur++;
+        return;
+    case '-':
+        px->tok = T_MINUS;
+        px->cur++;
+        return;
+    case '(':
+        px->tok = T_LP;
+        px->cur++;
+        return;
+    case ')':
+        px->tok = T_RP;
+        px->cur++;
+        return;
+    case '%':
+        px->tok = T_PCT;
+        px->cur++;
+        return;
+    case '^':
+        px->tok = T_CARET;
+        px->cur++;
+        return;
+    case '/':
+        px->tok = T_SLASH;
+        px->cur++;
+        return;
     case '*':
-        if (px->cur[1] == '*') { px->tok = T_CARET; px->cur += 2; }
-        else                   { px->tok = T_STAR;  px->cur++;    }
+        if (px->cur[1] == '*') {
+            px->tok = T_CARET;
+            px->cur += 2;
+        } else {
+            px->tok = T_STAR;
+            px->cur++;
+        }
         return;
     }
 
     /* 'res' token */
     if (px->cur[0] == 'r' && px->cur[1] == 'e' && px->cur[2] == 's') {
         char nx = px->cur[3];
-        if (!isalnum((unsigned char)nx) && nx != '_') {
-            px->tok  = T_NUM;
+        if (!isalnum((uint8_t)nx) && nx != '_') {
+            px->tok = T_NUM;
             px->ival = last_result;
             px->dval = last_result_d;
             px->cur += 3;
@@ -211,7 +239,8 @@ static void px_advance(Parser *px) {
         px->dval = strtod(px->cur, &end);
         if (end == px->cur || errno) {
             snprintf(px->errmsg, sizeof(px->errmsg), "invalid token '%.20s'", px->cur);
-            px->err = 1; px->tok = T_ERR;
+            px->err = 1;
+            px->tok = T_ERR;
             return;
         }
         px->cur = end;
@@ -220,28 +249,37 @@ static void px_advance(Parser *px) {
         const char *q = px->cur;
         while (1) {
             int d;
-            if      (*q >= '0' && *q <= '9') d = *q - '0';
-            else if (*q >= 'a' && *q <= 'f') d = *q - 'a' + 10;
-            else if (*q >= 'A' && *q <= 'F') d = *q - 'A' + 10;
-            else break;
-            if (d >= ibase) break;
+            if (*q >= '0' && *q <= '9')
+                d = *q - '0';
+            else if (*q >= 'a' && *q <= 'f')
+                d = *q - 'a' + 10;
+            else if (*q >= 'A' && *q <= 'F')
+                d = *q - 'A' + 10;
+            else
+                break;
+            if (d >= ibase)
+                break;
             q++;
         }
         if (q == px->cur) {
             snprintf(px->errmsg, sizeof(px->errmsg), "invalid token '%.20s'", px->cur);
-            px->err = 1; px->tok = T_ERR;
+            px->err = 1;
+            px->tok = T_ERR;
             return;
         }
         char nbuf[64];
         size_t n = (size_t)(q - px->cur);
-        if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
-        memcpy(nbuf, px->cur, n); nbuf[n] = 0;
+        if (n >= sizeof(nbuf))
+            n = sizeof(nbuf) - 1;
+        memcpy(nbuf, px->cur, n);
+        nbuf[n] = 0;
         char *end;
         errno = 0;
         px->ival = (int64_t)strtoll(nbuf, &end, ibase);
         if (errno) {
             snprintf(px->errmsg, sizeof(px->errmsg), "number out of range");
-            px->err = 1; px->tok = T_ERR;
+            px->err = 1;
+            px->tok = T_ERR;
             return;
         }
         px->cur = q;
@@ -251,14 +289,17 @@ static void px_advance(Parser *px) {
 
 /* Forward declarations needed for parenthesised sub-expressions. */
 static int64_t px_expr_i(Parser *px);
-static double  px_expr_d(Parser *px);
+static double px_expr_d(Parser *px);
 
 /* ── integer recursive-descent ── */
 
 static int64_t px_primary_i(Parser *px) {
-    if (px->err) return 0;
+    if (px->err)
+        return 0;
     if (px->tok == T_NUM) {
-        int64_t v = px->ival; px_advance(px); return v;
+        int64_t v = px->ival;
+        px_advance(px);
+        return v;
     }
     if (px->tok == T_LP) {
         px_advance(px);
@@ -279,28 +320,40 @@ static int64_t px_primary_i(Parser *px) {
 }
 
 static int64_t px_unary_i(Parser *px) {
-    if (px->err) return 0;
-    if (px->tok == T_MINUS) { px_advance(px); return -px_unary_i(px); }
-    if (px->tok == T_PLUS)  { px_advance(px); return  px_unary_i(px); }
+    if (px->err)
+        return 0;
+    if (px->tok == T_MINUS) {
+        px_advance(px);
+        return -px_unary_i(px);
+    }
+    if (px->tok == T_PLUS) {
+        px_advance(px);
+        return px_unary_i(px);
+    }
     return px_primary_i(px);
 }
 
 static int64_t px_power_i(Parser *px) {
-    if (px->err) return 0;
+    if (px->err)
+        return 0;
     int64_t base = px_unary_i(px);
     if (!px->err && px->tok == T_CARET) {
         px_advance(px);
-        int64_t exp = px_power_i(px);  /* right-associative recursion */
-        if (px->err) return 0;
+        int64_t exp = px_power_i(px); /* right-associative recursion */
+        if (px->err)
+            return 0;
         if (exp < 0) {
             snprintf(px->errmsg, sizeof(px->errmsg), "negative exponent");
-            px->err = 1; return 0;
+            px->err = 1;
+            return 0;
         }
         int64_t result = 1;
         while (exp > 0) {
-            if (exp & 1) result *= base;
+            if (exp & 1)
+                result *= base;
             exp >>= 1;
-            if (exp > 0) base *= base;
+            if (exp > 0)
+                base *= base;
         }
         return result;
     }
@@ -308,28 +361,34 @@ static int64_t px_power_i(Parser *px) {
 }
 
 static int64_t px_term_i(Parser *px) {
-    if (px->err) return 0;
+    if (px->err)
+        return 0;
     int64_t lhs = px_power_i(px);
     while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
-        int op = px->tok; px_advance(px);
+        int op = px->tok;
+        px_advance(px);
         int64_t rhs = px_power_i(px);
-        if (px->err) break;
+        if (px->err)
+            break;
         if (op == T_STAR) {
             lhs *= rhs;
         } else if (op == T_SLASH) {
             if (rhs == 0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "division by zero");
-                px->err = 1; break;
+                px->err = 1;
+                break;
             }
             if (lhs == INT64_MIN && rhs == -1) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "overflow");
-                px->err = 1; break;
+                px->err = 1;
+                break;
             }
             lhs /= rhs;
         } else {
             if (rhs == 0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
-                px->err = 1; break;
+                px->err = 1;
+                break;
             }
             lhs = (lhs == INT64_MIN && rhs == -1) ? 0 : lhs % rhs;
         }
@@ -338,12 +397,15 @@ static int64_t px_term_i(Parser *px) {
 }
 
 static int64_t px_expr_i(Parser *px) {
-    if (px->err) return 0;
+    if (px->err)
+        return 0;
     int64_t lhs = px_term_i(px);
     while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
-        int op = px->tok; px_advance(px);
+        int op = px->tok;
+        px_advance(px);
         int64_t rhs = px_term_i(px);
-        if (px->err) break;
+        if (px->err)
+            break;
         lhs = (op == T_PLUS) ? lhs + rhs : lhs - rhs;
     }
     return lhs;
@@ -352,9 +414,12 @@ static int64_t px_expr_i(Parser *px) {
 /* ── floating-point recursive-descent ── */
 
 static double px_primary_d(Parser *px) {
-    if (px->err) return 0.0;
+    if (px->err)
+        return 0.0;
     if (px->tok == T_NUM) {
-        double v = px->dval; px_advance(px); return v;
+        double v = px->dval;
+        px_advance(px);
+        return v;
     }
     if (px->tok == T_LP) {
         px_advance(px);
@@ -375,14 +440,22 @@ static double px_primary_d(Parser *px) {
 }
 
 static double px_unary_d(Parser *px) {
-    if (px->err) return 0.0;
-    if (px->tok == T_MINUS) { px_advance(px); return -px_unary_d(px); }
-    if (px->tok == T_PLUS)  { px_advance(px); return  px_unary_d(px); }
+    if (px->err)
+        return 0.0;
+    if (px->tok == T_MINUS) {
+        px_advance(px);
+        return -px_unary_d(px);
+    }
+    if (px->tok == T_PLUS) {
+        px_advance(px);
+        return px_unary_d(px);
+    }
     return px_primary_d(px);
 }
 
 static double px_power_d(Parser *px) {
-    if (px->err) return 0.0;
+    if (px->err)
+        return 0.0;
     double base = px_unary_d(px);
     if (!px->err && px->tok == T_CARET) {
         px_advance(px);
@@ -393,24 +466,29 @@ static double px_power_d(Parser *px) {
 }
 
 static double px_term_d(Parser *px) {
-    if (px->err) return 0.0;
+    if (px->err)
+        return 0.0;
     double lhs = px_power_d(px);
     while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
-        int op = px->tok; px_advance(px);
+        int op = px->tok;
+        px_advance(px);
         double rhs = px_power_d(px);
-        if (px->err) break;
+        if (px->err)
+            break;
         if (op == T_STAR) {
             lhs *= rhs;
         } else if (op == T_SLASH) {
             if (rhs == 0.0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "division by zero");
-                px->err = 1; break;
+                px->err = 1;
+                break;
             }
             lhs /= rhs;
         } else {
             if (rhs == 0.0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
-                px->err = 1; break;
+                px->err = 1;
+                break;
             }
             lhs = fmod(lhs, rhs);
         }
@@ -419,12 +497,15 @@ static double px_term_d(Parser *px) {
 }
 
 static double px_expr_d(Parser *px) {
-    if (px->err) return 0.0;
+    if (px->err)
+        return 0.0;
     double lhs = px_term_d(px);
     while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
-        int op = px->tok; px_advance(px);
+        int op = px->tok;
+        px_advance(px);
         double rhs = px_term_d(px);
-        if (px->err) break;
+        if (px->err)
+            break;
         lhs = (op == T_PLUS) ? lhs + rhs : lhs - rhs;
     }
     return lhs;
@@ -447,19 +528,35 @@ static void handle_expression(const char *line) {
 
     if (ibase_float) {
         double result = px_expr_d(&px);
-        if (px.err) { fprintf(stderr, "error: %s\n", px.errmsg); return; }
-        if (px.tok != T_END) { fprintf(stderr, "error: unexpected input\n"); return; }
-        if (obase_float) printf("%g\n", result);
-        else             print_result((int64_t)result);
+        if (px.err) {
+            fprintf(stderr, "error: %s\n", px.errmsg);
+            return;
+        }
+        if (px.tok != T_END) {
+            fprintf(stderr, "error: unexpected input\n");
+            return;
+        }
+        if (obase_float)
+            printf("%g\n", result);
+        else
+            print_result((int64_t)result);
         last_result_d = result;
-        last_result   = (int64_t)result;
+        last_result = (int64_t)result;
     } else {
         int64_t result = px_expr_i(&px);
-        if (px.err) { fprintf(stderr, "error: %s\n", px.errmsg); return; }
-        if (px.tok != T_END) { fprintf(stderr, "error: unexpected input\n"); return; }
-        if (obase_float) printf("%g\n", (double)result);
-        else             print_result(result);
-        last_result   = result;
+        if (px.err) {
+            fprintf(stderr, "error: %s\n", px.errmsg);
+            return;
+        }
+        if (px.tok != T_END) {
+            fprintf(stderr, "error: unexpected input\n");
+            return;
+        }
+        if (obase_float)
+            printf("%g\n", (double)result);
+        else
+            print_result(result);
+        last_result = result;
         last_result_d = (double)result;
     }
 }

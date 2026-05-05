@@ -15,7 +15,7 @@ SRCS    = calc.c
 
 .PHONY: all run clean test
 
-all: $(TARGET)
+all: clean $(TARGET) test
 
 $(TARGET): $(SRCS)
 	$(CC) $(CFLAGS) -o bin/$@ $^ -lm
