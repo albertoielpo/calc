@@ -19,7 +19,8 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.4.2"
+#define CALC_VERSION "1.5.0"
+#define CLEAR_SCREEN "\033[2J\033[H"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
@@ -62,10 +63,11 @@ static void print_result(int64_t val) {
     }
 
     if (val == 0) {
-        if (obase == 2)
+        if (obase == 2) {
             printf("00000000\n");
-        else
+        } else {
             printf("0\n");
+        }
         return;
     }
 
@@ -628,10 +630,11 @@ static void handle_expression(const char *line) {
             fprintf(stderr, "error: unexpected input\n");
             return;
         }
-        if (obase_float)
+        if (obase_float) {
             printf("%g\n", result);
-        else
+        } else {
             print_result((int64_t)result);
+        }
         last_result_d = result;
         last_result = (int64_t)result;
     } else {
@@ -644,10 +647,11 @@ static void handle_expression(const char *line) {
             fprintf(stderr, "error: unexpected input\n");
             return;
         }
-        if (obase_float)
+        if (obase_float) {
             printf("%g\n", (double)result);
-        else
+        } else {
             print_result(result);
+        }
         last_result = result;
         last_result_d = (double)result;
     }
@@ -671,10 +675,16 @@ int main(void) {
 
     while (1) {
         printf("> ");
-        fflush(stdout);
+        fflush(stdout); // flush stdout
 
         if (fgets(line, sizeof(line), stdin) == NULL)
             break; /* EOF */
+
+        // line starts with ctrl+l
+        if (line[0] == 12) {
+            printf(CLEAR_SCREEN);
+            continue;
+        }
 
         char *s = trim(line);
         if (*s == 0)
@@ -682,6 +692,11 @@ int main(void) {
 
         if (strcmp(s, "exit") == 0 || strcmp(s, "quit") == 0)
             break;
+
+        if (strcmp(s, "clear") == 0) {
+            printf(CLEAR_SCREEN);
+            continue;
+        }
 
         /* ibase <n> */
         if (strncmp(s, "ibase", 5) == 0 && (s[5] == ' ' || s[5] == '\t')) {

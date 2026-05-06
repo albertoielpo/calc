@@ -149,6 +149,14 @@ A bare number with no operator performs a plain base conversion:
 255
 ```
 
+### Clear screen
+
+Type `clear` to clear the terminal screen:
+
+```
+> clear
+```
+
 ### Error handling
 
 | Condition | Message |
