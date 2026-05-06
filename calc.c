@@ -19,7 +19,7 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.4.1"
+#define CALC_VERSION "1.4.2"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
 static int obase = 10;      /**< Current output base (2, 8, 10, or 16). */
@@ -38,7 +38,11 @@ static int valid_base(int b) {
     return b == 2 || b == 8 || b == 10 || b == 16;
 }
 
-/* Returns non-zero if s is "10f" or "10F". */
+/**
+ * @brief Check whether @p s represents the floating-point base specifier.
+ * @param s Null-terminated string to check.
+ * @return Non-zero if @p s is "10f" or "10F"; zero otherwise.
+ */
 static int is_float_base(const char *s) {
     return s[0] == '1' && s[1] == '0' &&
            (s[2] == 'f' || s[2] == 'F') && s[3] == 0;
@@ -152,33 +156,44 @@ static char *trim(char *s) {
  * '**' is accepted as a synonym for '^'.
  */
 
-#define T_NUM 0
-#define T_PLUS 1
-#define T_MINUS 2
-#define T_STAR 3
-#define T_SLASH 4
-#define T_PCT 5
-#define T_CARET 6
-#define T_LP 7
-#define T_RP 8
-#define T_END 9
-#define T_ERR 10
+#define T_NUM 0   /**< Numeric literal token. */
+#define T_PLUS 1  /**< Addition operator @c +. */
+#define T_MINUS 2 /**< Subtraction / unary-minus operator @c -. */
+#define T_STAR 3  /**< Multiplication operator @c *. */
+#define T_SLASH 4 /**< Division operator @c /. */
+#define T_PCT 5   /**< Modulo operator @c %. */
+#define T_CARET 6 /**< Exponentiation operator @c ^ (also accepted as @c **). */
+#define T_LP 7    /**< Left parenthesis @c (. */
+#define T_RP 8    /**< Right parenthesis @c ). */
+#define T_END 9   /**< End-of-input sentinel. */
+#define T_ERR 10  /**< Error sentinel set when the lexer cannot match a token. */
 
+/**
+ * @brief Parser state for the recursive-descent expression evaluator.
+ */
 typedef struct {
-    const char *cur; /* current scan position */
-    int tok;         /* lookahead token type */
-    int64_t ival;    /* numeric value (integer mode) */
-    double dval;     /* numeric value (float mode) */
-    int err;         /* non-zero after any error */
-    char errmsg[80];
+    const char *cur; /**< Current scan position in the input string. */
+    int tok;         /**< Lookahead token type (one of the @c T_* constants). */
+    int64_t ival;    /**< Numeric value of the last token in integer mode. */
+    double dval;     /**< Numeric value of the last token in floating-point mode. */
+    int err;         /**< Non-zero after any lexer or parser error. */
+    char errmsg[80]; /**< Human-readable description of the first error encountered. */
 } Parser;
 
+/**
+ * @brief Advance the parser to the next token.
+ *
+ * Skips whitespace, then reads one token from @p px->cur, setting
+ * @p px->tok (and @p px->ival / @p px->dval for @c T_NUM). Sets
+ * @p px->err and @p px->errmsg on an unrecognised token.
+ * @param px Parser state to advance.
+ */
 static void px_advance(Parser *px) {
     while (isspace((uint8_t)*px->cur))
         px->cur++;
 
     switch (*px->cur) {
-    case '\0':
+    case 0:
         px->tok = T_END;
         return;
     case '+':
@@ -293,6 +308,14 @@ static double px_expr_d(Parser *px);
 
 /* ── integer recursive-descent ── */
 
+/**
+ * @brief Parse and evaluate a primary integer expression.
+ *
+ * Handles numeric literals, the @c res keyword, and parenthesised
+ * sub-expressions.
+ * @param px Parser state.
+ * @return Evaluated integer value, or 0 on error.
+ */
 static int64_t px_primary_i(Parser *px) {
     if (px->err)
         return 0;
@@ -319,6 +342,14 @@ static int64_t px_primary_i(Parser *px) {
     return 0;
 }
 
+/**
+ * @brief Parse and evaluate a unary integer expression.
+ *
+ * Handles leading @c + and @c - signs before delegating to
+ * px_primary_i().
+ * @param px Parser state.
+ * @return Evaluated integer value, or 0 on error.
+ */
 static int64_t px_unary_i(Parser *px) {
     if (px->err)
         return 0;
@@ -333,6 +364,14 @@ static int64_t px_unary_i(Parser *px) {
     return px_primary_i(px);
 }
 
+/**
+ * @brief Parse and evaluate an integer exponentiation expression.
+ *
+ * Implements right-associative @c ^ (and @c **) using repeated squaring.
+ * Reports an error for negative exponents.
+ * @param px Parser state.
+ * @return Evaluated integer value, or 0 on error.
+ */
 static int64_t px_power_i(Parser *px) {
     if (px->err)
         return 0;
@@ -360,6 +399,14 @@ static int64_t px_power_i(Parser *px) {
     return base;
 }
 
+/**
+ * @brief Parse and evaluate an integer multiplicative expression.
+ *
+ * Handles @c *, @c /, and @c % with left-to-right associativity.
+ * Reports errors for division and modulo by zero.
+ * @param px Parser state.
+ * @return Evaluated integer value, or 0 on error.
+ */
 static int64_t px_term_i(Parser *px) {
     if (px->err)
         return 0;
@@ -396,6 +443,13 @@ static int64_t px_term_i(Parser *px) {
     return lhs;
 }
 
+/**
+ * @brief Parse and evaluate a full integer additive expression.
+ *
+ * Handles @c + and @c - with left-to-right associativity.
+ * @param px Parser state.
+ * @return Evaluated integer value, or 0 on error.
+ */
 static int64_t px_expr_i(Parser *px) {
     if (px->err)
         return 0;
@@ -413,6 +467,14 @@ static int64_t px_expr_i(Parser *px) {
 
 /* ── floating-point recursive-descent ── */
 
+/**
+ * @brief Parse and evaluate a primary floating-point expression.
+ *
+ * Handles numeric literals, the @c res keyword, and parenthesised
+ * sub-expressions.
+ * @param px Parser state.
+ * @return Evaluated double value, or 0.0 on error.
+ */
 static double px_primary_d(Parser *px) {
     if (px->err)
         return 0.0;
@@ -439,6 +501,14 @@ static double px_primary_d(Parser *px) {
     return 0.0;
 }
 
+/**
+ * @brief Parse and evaluate a unary floating-point expression.
+ *
+ * Handles leading @c + and @c - signs before delegating to
+ * px_primary_d().
+ * @param px Parser state.
+ * @return Evaluated double value, or 0.0 on error.
+ */
 static double px_unary_d(Parser *px) {
     if (px->err)
         return 0.0;
@@ -453,6 +523,13 @@ static double px_unary_d(Parser *px) {
     return px_primary_d(px);
 }
 
+/**
+ * @brief Parse and evaluate a floating-point exponentiation expression.
+ *
+ * Implements right-associative @c ^ (and @c **) via @c pow().
+ * @param px Parser state.
+ * @return Evaluated double value, or 0.0 on error.
+ */
 static double px_power_d(Parser *px) {
     if (px->err)
         return 0.0;
@@ -465,6 +542,14 @@ static double px_power_d(Parser *px) {
     return base;
 }
 
+/**
+ * @brief Parse and evaluate a floating-point multiplicative expression.
+ *
+ * Handles @c *, @c /, and @c % (via @c fmod) with left-to-right
+ * associativity. Reports errors for division and modulo by zero.
+ * @param px Parser state.
+ * @return Evaluated double value, or 0.0 on error.
+ */
 static double px_term_d(Parser *px) {
     if (px->err)
         return 0.0;
@@ -496,6 +581,13 @@ static double px_term_d(Parser *px) {
     return lhs;
 }
 
+/**
+ * @brief Parse and evaluate a full floating-point additive expression.
+ *
+ * Handles @c + and @c - with left-to-right associativity.
+ * @param px Parser state.
+ * @return Evaluated double value, or 0.0 on error.
+ */
 static double px_expr_d(Parser *px) {
     if (px->err)
         return 0.0;
