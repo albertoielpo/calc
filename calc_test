@@ -263,6 +263,41 @@ test_multi_res_in_expr() {
     assert_test $res "7"
 }
 
+test_root_square() {
+    local res=$(execute_test "16//2")
+    assert_test $res "4"
+}
+
+test_root_cube() {
+    local res=$(execute_test "125//3")
+    assert_test $res "5"
+}
+
+test_root_negative_odd() {
+    local res=$(execute_test "-27//3")
+    assert_test "$res" "-3"
+}
+
+test_root_perfect_10th() {
+    local res=$(execute_test "1024//10")
+    assert_test $res "2"
+}
+
+test_root_first_degree() {
+    local res=$(execute_test "42//1")
+    assert_test $res "42"
+}
+
+test_root_float_square() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "16//2")
+    assert_test $res "4"
+}
+
+test_root_float_cube() {
+    local res=$(execute_test "ibase 10f" "obase 10f" "125//3")
+    assert_test $res "5"
+}
+
 # ----------------- TEST EXECUTIONS -----------------
 test_base10_sum
 test_base10_subtraction
@@ -309,3 +344,10 @@ test_multi_unary_minus_in_expr
 test_multi_float_precedence
 test_multi_float_parens
 test_multi_res_in_expr
+test_root_square
+test_root_cube
+test_root_negative_odd
+test_root_perfect_10th
+test_root_first_degree
+test_root_float_square
+test_root_float_cube

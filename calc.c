@@ -19,7 +19,7 @@
 #include <string.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.5.0"
+#define CALC_VERSION "1.6.0"
 #define CLEAR_SCREEN "\033[2J\033[H"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
@@ -138,8 +138,9 @@ static void print_result(int64_t val) {
 static char *trim(char *s) {
     while (isspace((uint8_t)*s))
         s++;
-    if (*s == 0)
+    if (*s == 0) {
         return s;
+    }
     char *end = s + strlen(s) - 1;
     while (end > s && isspace((uint8_t)*end))
         *end-- = 0;
@@ -150,12 +151,13 @@ static char *trim(char *s) {
  *
  * Grammar (integer and floating-point modes share the same structure):
  *   expr    = term   { ('+' | '-') term   }
- *   term    = power  { ('*' | '/' | '%') power }
+ *   term    = power  { ('*' | '/' | '%' | '//') power }
  *   power   = unary  [ '^' power ]          (right-associative)
  *   unary   = '-' unary | '+' unary | primary
  *   primary = NUMBER | 'res' | '(' expr ')'
  *
  * '**' is accepted as a synonym for '^'.
+ * '//' is the nth-root operator: a//n = nth root of a.
  */
 
 #define T_NUM 0   /**< Numeric literal token. */
@@ -169,6 +171,7 @@ static char *trim(char *s) {
 #define T_RP 8    /**< Right parenthesis @c ). */
 #define T_END 9   /**< End-of-input sentinel. */
 #define T_ERR 10  /**< Error sentinel set when the lexer cannot match a token. */
+#define T_ROOT 11 /**< Nth-root operator @c // (a//n = nth root of a). */
 
 /**
  * @brief Parser state for the recursive-descent expression evaluator.
@@ -223,8 +226,13 @@ static void px_advance(Parser *px) {
         px->cur++;
         return;
     case '/':
-        px->tok = T_SLASH;
-        px->cur++;
+        if (px->cur[1] == '/') {
+            px->tok = T_ROOT;
+            px->cur += 2;
+        } else {
+            px->tok = T_SLASH;
+            px->cur++;
+        }
         return;
     case '*':
         if (px->cur[1] == '*') {
@@ -319,8 +327,9 @@ static double px_expr_d(Parser *px);
  * @return Evaluated integer value, or 0 on error.
  */
 static int64_t px_primary_i(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0;
+    }
     if (px->tok == T_NUM) {
         int64_t v = px->ival;
         px_advance(px);
@@ -353,8 +362,9 @@ static int64_t px_primary_i(Parser *px) {
  * @return Evaluated integer value, or 0 on error.
  */
 static int64_t px_unary_i(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0;
+    }
     if (px->tok == T_MINUS) {
         px_advance(px);
         return -px_unary_i(px);
@@ -375,8 +385,9 @@ static int64_t px_unary_i(Parser *px) {
  * @return Evaluated integer value, or 0 on error.
  */
 static int64_t px_power_i(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0;
+    }
     int64_t base = px_unary_i(px);
     if (!px->err && px->tok == T_CARET) {
         px_advance(px);
@@ -390,15 +401,54 @@ static int64_t px_power_i(Parser *px) {
         }
         int64_t result = 1;
         while (exp > 0) {
-            if (exp & 1)
+            if (exp & 1) {
                 result *= base;
+            }
             exp >>= 1;
-            if (exp > 0)
+            if (exp > 0) {
                 base *= base;
+            }
         }
         return result;
     }
     return base;
+}
+
+/* Compute base^exp, saturating at INT64_MAX on overflow (base > 0 assumed). */
+static int64_t pow_sat(int64_t base, int64_t exp) {
+    int64_t result = 1;
+    while (exp > 0) {
+        if (exp & 1) {
+            if (result > INT64_MAX / base)
+                return INT64_MAX;
+            result *= base;
+        }
+        exp >>= 1;
+        if (exp > 0) {
+            if (base > INT64_MAX / base)
+                return INT64_MAX;
+            base *= base;
+        }
+    }
+    return result;
+}
+
+/* Return the largest non-negative integer x such that x^n <= a (a >= 0, n >= 1). */
+static int64_t iroot_positive(int64_t a, int64_t n) {
+    if (a == 0)
+        return 0;
+    if (n == 1)
+        return a;
+    int64_t x = (int64_t)pow((double)a, 1.0 / (double)n);
+    if (x < 1)
+        x = 1;
+    /* Nudge up in case floating-point undershot. */
+    while (pow_sat(x + 1, n) <= a)
+        x++;
+    /* Nudge down in case floating-point overshot. */
+    while (x > 0 && pow_sat(x, n) > a)
+        x--;
+    return x;
 }
 
 /**
@@ -410,10 +460,11 @@ static int64_t px_power_i(Parser *px) {
  * @return Evaluated integer value, or 0 on error.
  */
 static int64_t px_term_i(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0;
+    }
     int64_t lhs = px_power_i(px);
-    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
+    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT || px->tok == T_ROOT)) {
         int op = px->tok;
         px_advance(px);
         int64_t rhs = px_power_i(px);
@@ -433,6 +484,21 @@ static int64_t px_term_i(Parser *px) {
                 break;
             }
             lhs /= rhs;
+        } else if (op == T_ROOT) {
+            if (rhs <= 0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "root degree must be positive");
+                px->err = 1;
+                break;
+            }
+            if (lhs < 0 && rhs % 2 == 0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "even root of negative number");
+                px->err = 1;
+                break;
+            }
+            if (lhs < 0)
+                lhs = -iroot_positive(-lhs, rhs);
+            else
+                lhs = iroot_positive(lhs, rhs);
         } else {
             if (rhs == 0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
@@ -453,8 +519,9 @@ static int64_t px_term_i(Parser *px) {
  * @return Evaluated integer value, or 0 on error.
  */
 static int64_t px_expr_i(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0;
+    }
     int64_t lhs = px_term_i(px);
     while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
         int op = px->tok;
@@ -478,8 +545,9 @@ static int64_t px_expr_i(Parser *px) {
  * @return Evaluated double value, or 0.0 on error.
  */
 static double px_primary_d(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0.0;
+    }
     if (px->tok == T_NUM) {
         double v = px->dval;
         px_advance(px);
@@ -512,8 +580,9 @@ static double px_primary_d(Parser *px) {
  * @return Evaluated double value, or 0.0 on error.
  */
 static double px_unary_d(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0.0;
+    }
     if (px->tok == T_MINUS) {
         px_advance(px);
         return -px_unary_d(px);
@@ -533,8 +602,9 @@ static double px_unary_d(Parser *px) {
  * @return Evaluated double value, or 0.0 on error.
  */
 static double px_power_d(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0.0;
+    }
     double base = px_unary_d(px);
     if (!px->err && px->tok == T_CARET) {
         px_advance(px);
@@ -553,10 +623,11 @@ static double px_power_d(Parser *px) {
  * @return Evaluated double value, or 0.0 on error.
  */
 static double px_term_d(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0.0;
+    }
     double lhs = px_power_d(px);
-    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT)) {
+    while (!px->err && (px->tok == T_STAR || px->tok == T_SLASH || px->tok == T_PCT || px->tok == T_ROOT)) {
         int op = px->tok;
         px_advance(px);
         double rhs = px_power_d(px);
@@ -571,6 +642,17 @@ static double px_term_d(Parser *px) {
                 break;
             }
             lhs /= rhs;
+        } else if (op == T_ROOT) {
+            if (rhs <= 0.0) {
+                snprintf(px->errmsg, sizeof(px->errmsg), "root degree must be positive");
+                px->err = 1;
+                break;
+            }
+            if (lhs < 0.0) {
+                lhs = -pow(-lhs, 1.0 / rhs);
+            } else {
+                lhs = pow(lhs, 1.0 / rhs);
+            }
         } else {
             if (rhs == 0.0) {
                 snprintf(px->errmsg, sizeof(px->errmsg), "modulo by zero");
@@ -591,8 +673,9 @@ static double px_term_d(Parser *px) {
  * @return Evaluated double value, or 0.0 on error.
  */
 static double px_expr_d(Parser *px) {
-    if (px->err)
+    if (px->err) {
         return 0.0;
+    }
     double lhs = px_term_d(px);
     while (!px->err && (px->tok == T_PLUS || px->tok == T_MINUS)) {
         int op = px->tok;
@@ -690,8 +773,9 @@ int main(void) {
         if (*s == 0)
             continue;
 
-        if (strcmp(s, "exit") == 0 || strcmp(s, "quit") == 0)
+        if (strcmp(s, "exit") == 0 || strcmp(s, "quit") == 0) {
             break;
+        }
 
         if (strcmp(s, "clear") == 0) {
             printf(CLEAR_SCREEN);

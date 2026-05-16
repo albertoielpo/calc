@@ -24,7 +24,7 @@ The prompt `> ` appears and the calculator waits for input. Type `exit` or `quit
 
 ### Arithmetic
 
-Expressions can contain multiple operators. Standard precedence applies — `^` binds tightest, then `* / %`, then `+ -`. Use parentheses to override:
+Expressions can contain multiple operators. Standard precedence applies — `^` binds tightest, then `* / % //`, then `+ -`. Use parentheses to override:
 
 ```
 > 10+10+10
@@ -45,11 +45,41 @@ Expressions can contain multiple operators. Standard precedence applies — `^` 
 100
 > 2^3^2
 512
+> 16//2
+4
+> 125//3
+5
 ```
 
-Supported operators: `+` `-` `*` `/` `%` `^` (also `**`)
+Supported operators: `+` `-` `*` `/` `%` `^` (also `**`) `//`
 
 `^` is right-associative (`2^3^2` = `2^(3^2)` = 512). Integer division truncates toward zero. Modulo follows the sign of the dividend. Exponentiation requires a non-negative integer exponent.
+
+#### Nth-root operator (`//`)
+
+`a // n` computes the nth root of `a` — the largest integer `x` such that `x^n ≤ a`.
+
+```
+> 16//2
+4
+> 125//3
+5
+> 1024//10
+2
+> -27//3
+-3
+```
+
+Odd roots of negative numbers are supported; even roots of negative numbers are an error. The degree `n` must be a positive integer. In floating-point mode (`ibase 10f`) the result is a `double` computed via `pow(a, 1/n)`:
+
+```
+> ibase 10f
+> obase 10f
+> 2//2
+1.41421
+> 125//3
+5
+```
 
 ### Result variable
 
@@ -96,7 +126,7 @@ Use `10f` (case-insensitive) as the base to switch a channel to IEEE-754 double 
 0.5
 ```
 
-Exponentiation with a `double` exponent (`2.0^0.5` = √2) and `fmod` for `%` are supported. Division and modulo by zero are still reported as errors.
+Exponentiation with a `double` exponent (`2.0^0.5` = √2), `fmod` for `%`, and `//` for nth-root are supported. Division and modulo by zero are still reported as errors.
 
 Hexadecimal digits may be uppercase or lowercase (`A`–`F` / `a`–`f`).
 
@@ -166,6 +196,8 @@ Type `clear` to clear the terminal screen:
 | Arithmetic overflow | `error: overflow` |
 | Invalid digit / token | `error: invalid token '…'` |
 | Negative exponent | `error: negative exponent` |
+| Root degree ≤ 0 | `error: root degree must be positive` |
+| Even root of negative | `error: even root of negative number` |
 | Missing closing parenthesis | `error: expected ')'` |
 | Unsupported base | `error: ibase must be 2, 8, 10, 10f or 16` |
 
