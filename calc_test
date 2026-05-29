@@ -1,28 +1,12 @@
 #!/usr/bin/env bash
 
 execute_test() {
-    while IFS= read -r line; do
-        if [ ">" == "${line:0:1}" ]; then
-            local val
-            val=$(tr -d "> " <<< "$line")
-            echo "$val"
-            return 0
-        fi
-    done < <(printf '%s\n' "$@" | ./bin/calc)
-    return 1
+    printf '%s\n' "$@" | ./bin/calc
 }
 
-# Like execute_test but returns the LAST non-empty result (needed for res tests).
+# Like execute_test but returns the LAST result (needed for res tests).
 execute_test_last() {
-    local last=""
-    while IFS= read -r line; do
-        if [ ">" == "${line:0:1}" ]; then
-            local val
-            val=$(tr -d "> " <<< "$line")
-            [ -n "$val" ] && last=$val
-        fi
-    done < <(printf '%s\n' "$@" | ./bin/calc)
-    echo "$last"
+    printf '%s\n' "$@" | ./bin/calc | tail -1
 }
 
 assert_test() {

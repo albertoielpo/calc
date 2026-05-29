@@ -22,6 +22,20 @@ Requires a C99-capable compiler (gcc or clang). No external dependencies.
 
 The prompt `> ` appears and the calculator waits for input. Type `exit` or `quit` (or send EOF with Ctrl-D) to leave.
 
+### Non-interactive / pipe mode
+
+When stdin is not a terminal, `calc` suppresses the banner and all prompts, printing only bare results — one per line:
+
+```sh
+$ echo "2^10" | calc
+1024
+
+$ printf 'ibase 16\nobase 10\nFF\n' | calc
+255
+```
+
+This makes it easy to use `calc` in scripts and shell pipelines.
+
 ### Arithmetic
 
 Expressions can contain multiple operators. Standard precedence applies — `^` binds tightest, then `* / % //`, then `+ -`. Use parentheses to override:

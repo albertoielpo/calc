@@ -17,9 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.6.0"
+#define CALC_VERSION "1.7.0"
 #define CLEAR_SCREEN "\033[2J\033[H"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
@@ -754,17 +755,21 @@ static void handle_expression(const char *line) {
  */
 int main(void) {
     char line[LINE_MAX_LEN];
-    printf("calc %s — type 'exit' or 'quit' to leave\n", CALC_VERSION);
+    int interactive = isatty(STDIN_FILENO);
+
+    if (interactive)
+        printf("calc %s — type 'exit' or 'quit' to leave\n", CALC_VERSION);
 
     while (1) {
-        printf("> ");
-        fflush(stdout); // flush stdout
+        if (interactive) {
+            printf("> ");
+            fflush(stdout);
+        }
 
         if (fgets(line, sizeof(line), stdin) == NULL)
             break; /* EOF */
 
-        // line starts with ctrl+l
-        if (line[0] == 12) {
+        if (interactive && line[0] == 12) {
             printf(CLEAR_SCREEN);
             continue;
         }
@@ -777,7 +782,7 @@ int main(void) {
             break;
         }
 
-        if (strcmp(s, "clear") == 0) {
+        if (interactive && strcmp(s, "clear") == 0) {
             printf(CLEAR_SCREEN);
             continue;
         }
