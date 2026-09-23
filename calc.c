@@ -20,7 +20,7 @@
 #include <unistd.h>
 
 #define LINE_MAX_LEN 256
-#define CALC_VERSION "1.7.0"
+#define CALC_VERSION "1.7.1"
 #define CLEAR_SCREEN "\033[2J\033[H"
 
 static int ibase = 10;      /**< Current input base (2, 8, 10, or 16). */
@@ -748,6 +748,7 @@ static void handle_expression(const char *line) {
  *   - @c exit / @c quit — terminate the session.
  *   - @c ibase @c \<n\> — set the input base (2, 8, 10, 10f, 16).
  *   - @c obase @c \<n\> — set the output base (2, 8, 10, 10f, 16).
+ *   - @c f — shortcut for @c "ibase 10f" followed by @c "obase 10f".
  *   - Any other input is passed to handle_expression().
  * The token @c res in any expression refers to the last computed result
  * (initially 0).
@@ -787,6 +788,14 @@ int main(void) {
             continue;
         }
 
+        /* f — shortcut for "ibase 10f" + "obase 10f" */
+        if (s[0] == 'f' && s[1] == 0) {
+            ibase = 10;
+            ibase_float = 1;
+            obase = 10;
+            obase_float = 1;
+            continue;
+        }
         /* ibase <n> */
         if (strncmp(s, "ibase", 5) == 0 && (s[5] == ' ' || s[5] == '\t')) {
             char *arg = trim(s + 5);

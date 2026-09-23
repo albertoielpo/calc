@@ -126,6 +126,9 @@ Use `10f` (case-insensitive) as the base to switch a channel to IEEE-754 double 
 
 - `ibase 10f` — parse inputs as floating-point numbers; arithmetic uses `double`.
 - `obase 10f` — format the result as a floating-point number.
+- `f` — shortcut for `ibase 10f` followed by `obase 10f`.
+
+Note: a line containing only a lowercase `f` is always treated as this shortcut, even when `ibase` is 16. To enter the hex digit 15 on its own, use `F`.
 
 ```
 > ibase 10f

@@ -282,6 +282,31 @@ test_root_float_cube() {
     assert_test $res "5"
 }
 
+test_f_alias_division() {
+    local res=$(execute_test "f" "10/4")
+    assert_test $res "2.5"
+}
+
+test_f_alias_float_input() {
+    local res=$(execute_test "f" "1.5+2.5*2")
+    assert_test $res "6.5"
+}
+
+test_f_alias_overrides_hex() {
+    local res=$(execute_test "ibase 16" "obase 16" "f" "10/4")
+    assert_test $res "2.5"
+}
+
+test_f_alias_then_int() {
+    local res=$(execute_test "f" "ibase 10" "obase 10" "10/4")
+    assert_test $res "2"
+}
+
+test_f_alias_produces_no_output() {
+    local res=$(execute_test "f" | wc -l)
+    assert_test $res "0"
+}
+
 # ----------------- TEST EXECUTIONS -----------------
 test_base10_sum
 test_base10_subtraction
@@ -335,3 +360,8 @@ test_root_perfect_10th
 test_root_first_degree
 test_root_float_square
 test_root_float_cube
+test_f_alias_division
+test_f_alias_float_input
+test_f_alias_overrides_hex
+test_f_alias_then_int
+test_f_alias_produces_no_output
